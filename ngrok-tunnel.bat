@@ -15,6 +15,13 @@ if not exist "%DEPLOY_DIR%\.env" (
 
 pushd "%DEPLOY_DIR%"
 
+:: 從 .env 讀取 LINE Bot 設定
+for /f "usebackq eol=# tokens=1* delims==" %%a in ("%DEPLOY_DIR%\.env") do (
+    if /i "%%a"=="LINE_CHANNEL_ACCESS_TOKEN" set "LINE_TOKEN=%%b"
+    if /i "%%a"=="LINE_WEBHOOK_PATH" set "LINE_WEBHOOK_PATH=%%b"
+)
+if "!LINE_WEBHOOK_PATH!"=="" set "LINE_WEBHOOK_PATH=/callback"
+
 echo [資訊] 正在啟動 ngrok 容器...
 docker compose down >nul 2>&1
 docker compose up -d --force-recreate
@@ -52,6 +59,22 @@ echo.
 
 echo !FINAL_URL! | clip
 echo [成功] 網址已複製到剪貼簿。
+
+:: 更新 LINE Bot Webhook
+if "!LINE_TOKEN!"=="" goto :SKIP_LINE
+if "!LINE_TOKEN!"=="your_line_channel_access_token_here" goto :SKIP_LINE
+
+echo [資訊] 正在更新 LINE Bot Webhook...
+set "TEMP_LINE_TOKEN=!LINE_TOKEN!"
+set "TEMP_WEBHOOK_URL=!FINAL_URL!!LINE_WEBHOOK_PATH!"
+
+powershell -ExecutionPolicy Bypass -File "%DEPLOY_DIR%\update_webhook.ps1"
+goto :MONITOR
+
+:SKIP_LINE
+echo [提示] 未設定 LINE_CHANNEL_ACCESS_TOKEN，跳過 Webhook 更新。
+
+:MONITOR
 echo [提示] 正在進入監控模式 (按 Ctrl+C 退出)...
 echo ----------------------------------------
 docker compose logs -f ngrok
