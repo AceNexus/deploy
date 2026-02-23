@@ -75,9 +75,13 @@ goto :MONITOR
 echo [提示] 未設定 LINE_CHANNEL_ACCESS_TOKEN，跳過 Webhook 更新。
 
 :MONITOR
-echo [提示] 正在進入監控模式 (按 Ctrl+C 退出)...
 echo ----------------------------------------
-docker compose logs -f ngrok
+docker compose logs ngrok --tail 30
+echo ----------------------------------------
+echo.
+echo   完整資訊與流量監控請至：
+echo   http://localhost:4040/
+echo.
 goto :EXIT
 
 :ERROR_108
