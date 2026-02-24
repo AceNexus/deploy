@@ -1,6 +1,5 @@
 @echo off
 set DEPLOY_DIR=%~dp0deploy_nexusbot
-set NEXUSBOT_DIR=%~dp0..\nexusbot
 
 echo [1/5] Waiting for Config Server to be accessible...
 set RETRY=0
@@ -36,32 +35,15 @@ if errorlevel 1 (
 )
 echo Eureka Server OK.
 
-echo [3/5] Building nexusbot JAR...
-cd /d "%NEXUSBOT_DIR%"
-call gradlew.bat bootJar
-if errorlevel 1 (
-    echo [ERROR] JAR 編譯失敗
-    pause
-    exit /b 1
-)
-
-set JAR_FILE=
-for %%f in ("%NEXUSBOT_DIR%\build\libs\nexusbot-*.jar") do set JAR_FILE=%%f
-if "%JAR_FILE%"=="" (
-    echo [ERROR] 找不到編譯產出的 JAR 檔案
-    pause
-    exit /b 1
-)
-echo 複製 JAR: %JAR_FILE%
-copy /Y "%JAR_FILE%" "%DEPLOY_DIR%\nexusbot.jar" >nul
-
-echo [4/5] Deploying nexusbot container...
+echo [3/5] Stopping old containers...
 cd /d "%DEPLOY_DIR%"
 docker compose down
+
+echo [4/5] Building and starting services...
 docker compose up -d --build
 
 echo [5/5] Checking health...
-timeout /t 30 /nobreak >nul
+timeout /t 15 /nobreak >nul
 curl -s http://localhost:5001/actuator/health
 
 echo.

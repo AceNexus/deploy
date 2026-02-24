@@ -20,7 +20,7 @@ for /f "usebackq eol=# tokens=1* delims==" %%a in ("%DEPLOY_DIR%\.env") do (
     if /i "%%a"=="LINE_CHANNEL_ACCESS_TOKEN" set "LINE_TOKEN=%%b"
     if /i "%%a"=="LINE_WEBHOOK_PATH" set "LINE_WEBHOOK_PATH=%%b"
 )
-if "!LINE_WEBHOOK_PATH!"=="" set "LINE_WEBHOOK_PATH=/callback"
+if "!LINE_WEBHOOK_PATH!"=="" set "LINE_WEBHOOK_PATH=/webhook"
 
 echo [資訊] 正在啟動 ngrok 容器...
 docker compose down >nul 2>&1
@@ -59,6 +59,18 @@ echo.
 
 echo !FINAL_URL! | clip
 echo [成功] 網址已複製到剪貼簿。
+
+:: 更新 nexusbot NEXUSBOT_BASE_URL 並重啟容器
+set "NEXUSBOT_ENV=%~dp0deploy_nexusbot\.env"
+if exist "!NEXUSBOT_ENV!" (
+    echo [資訊] 正在更新 nexusbot NEXUSBOT_BASE_URL...
+    powershell -Command "(Get-Content '!NEXUSBOT_ENV!') -replace '^NEXUSBOT_BASE_URL=.*', 'NEXUSBOT_BASE_URL=!FINAL_URL!' | Set-Content '!NEXUSBOT_ENV!'"
+    echo [資訊] 正在重啟 nexusbot 容器套用新網址...
+    pushd "%~dp0deploy_nexusbot"
+    docker compose up -d
+    popd
+    echo [成功] nexusbot 已更新並重啟。
+)
 
 :: 更新 LINE Bot Webhook
 if "!LINE_TOKEN!"=="" goto :SKIP_LINE

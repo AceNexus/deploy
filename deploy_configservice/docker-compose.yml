@@ -39,6 +39,8 @@ services:
         reservations:
           memory: 256M
     restart: unless-stopped
+    networks:
+      - acenexus-network
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
@@ -65,6 +67,12 @@ services:
         reservations:
           memory: 128M
     restart: unless-stopped
+    networks:
+      - acenexus-network
 
 volumes:
   rabbitmq-data:
+
+networks:
+  acenexus-network:
+    external: true
