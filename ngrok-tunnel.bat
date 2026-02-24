@@ -17,10 +17,13 @@ pushd "%DEPLOY_DIR%"
 
 :: 從 .env 讀取 LINE Bot 設定
 for /f "usebackq eol=# tokens=1* delims==" %%a in ("%DEPLOY_DIR%\.env") do (
-    if /i "%%a"=="LINE_CHANNEL_ACCESS_TOKEN" set "LINE_TOKEN=%%b"
-    if /i "%%a"=="LINE_WEBHOOK_PATH" set "LINE_WEBHOOK_PATH=%%b"
+    if /i "%%a"=="LINE_CHANNEL_ACCESS_TOKEN"      set "LINE_TOKEN=%%b"
+    if /i "%%a"=="LINE_WEBHOOK_PATH"              set "LINE_WEBHOOK_PATH=%%b"
+    if /i "%%a"=="LINE_CHANNEL_ACCESS_TOKEN_TEST" set "LINE_TOKEN_TEST=%%b"
+    if /i "%%a"=="LINE_WEBHOOK_PATH_TEST"         set "LINE_WEBHOOK_PATH_TEST=%%b"
 )
-if "!LINE_WEBHOOK_PATH!"=="" set "LINE_WEBHOOK_PATH=/webhook"
+if "!LINE_WEBHOOK_PATH!"==""      set "LINE_WEBHOOK_PATH=/api/linebot/webhook"
+if "!LINE_WEBHOOK_PATH_TEST!"=="" set "LINE_WEBHOOK_PATH_TEST=/api/linebot-test/webhook"
 
 echo [資訊] 正在啟動 ngrok 容器...
 docker compose down >nul 2>&1
@@ -72,19 +75,32 @@ if exist "!NEXUSBOT_ENV!" (
     echo [成功] nexusbot 已更新並重啟。
 )
 
-:: 更新 LINE Bot Webhook
-if "!LINE_TOKEN!"=="" goto :SKIP_LINE
-if "!LINE_TOKEN!"=="your_line_channel_access_token_here" goto :SKIP_LINE
+:: 更新 LINE Bot 1 Webhook（nexusbot :5001）
+if "!LINE_TOKEN!"=="" goto :SKIP_LINE1
+if "!LINE_TOKEN!"=="your_line_channel_access_token_here" goto :SKIP_LINE1
 
-echo [資訊] 正在更新 LINE Bot Webhook...
+echo [資訊] 正在更新 LINE Bot 1 Webhook...
 set "TEMP_LINE_TOKEN=!LINE_TOKEN!"
 set "TEMP_WEBHOOK_URL=!FINAL_URL!!LINE_WEBHOOK_PATH!"
+powershell -ExecutionPolicy Bypass -File "%DEPLOY_DIR%\update_webhook.ps1"
+goto :UPDATE_BOT2
 
+:SKIP_LINE1
+echo [提示] 未設定 LINE_CHANNEL_ACCESS_TOKEN，跳過 Bot 1 Webhook 更新。
+
+:UPDATE_BOT2
+:: 更新 LINE Bot 2 Webhook（nexusbot-test :5002）
+if "!LINE_TOKEN_TEST!"=="" goto :SKIP_LINE2
+if "!LINE_TOKEN_TEST!"=="your_test_bot_line_channel_access_token_here" goto :SKIP_LINE2
+
+echo [資訊] 正在更新 LINE Bot 2 (test) Webhook...
+set "TEMP_LINE_TOKEN=!LINE_TOKEN_TEST!"
+set "TEMP_WEBHOOK_URL=!FINAL_URL!!LINE_WEBHOOK_PATH_TEST!"
 powershell -ExecutionPolicy Bypass -File "%DEPLOY_DIR%\update_webhook.ps1"
 goto :MONITOR
 
-:SKIP_LINE
-echo [提示] 未設定 LINE_CHANNEL_ACCESS_TOKEN，跳過 Webhook 更新。
+:SKIP_LINE2
+echo [提示] 未設定 LINE_CHANNEL_ACCESS_TOKEN_TEST，跳過 Bot 2 Webhook 更新。
 
 :MONITOR
 echo ----------------------------------------
