@@ -9,7 +9,6 @@ out/
 .vscode/
 
 # Java Artifacts
-*.jar
 target/
 build/
 
