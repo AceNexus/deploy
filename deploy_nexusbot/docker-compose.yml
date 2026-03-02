@@ -35,6 +35,12 @@ services:
       EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-NexusBot 提醒通知}
       ADMIN_PASSWORD_SEED: ${ADMIN_PASSWORD_SEED}
       DEFAULT_TIMEZONE: ${DEFAULT_TIMEZONE:-Asia/Taipei}
+      OSM_OVERPASS_BASE_URL: ${OSM_OVERPASS_BASE_URL:-https://overpass-api.de/api/}
+      OSM_USER_AGENT: ${OSM_USER_AGENT:-NexusBot/1.0}
+      OSM_TOILET_TAGS: ${OSM_TOILET_TAGS:-amenity=toilets}
+      OSM_FACILITY_TAGS: ${OSM_FACILITY_TAGS:-amenity=toilets}
+      OSM_CAROUSEL_MAX_ITEMS: ${OSM_CAROUSEL_MAX_ITEMS:-5}
+      OSM_TIMEOUT_MS: ${OSM_TIMEOUT_MS:-10000}
     healthcheck:
       test: [ "CMD", "wget", "-qO-", "http://localhost:${SERVER_PORT:-5001}/actuator/health" ]
       interval: 15s
