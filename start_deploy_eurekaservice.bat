@@ -32,5 +32,8 @@ curl -s -u admin:password http://localhost:8761/actuator/health
 echo.
 echo Done.
 echo.
-echo [Tailing] eurekaservice logs (Ctrl+C to stop)...
-docker compose logs -f eurekaservice
+echo [5/5] Tailing logs (Ctrl+C to stop)...
+docker compose logs -f
+
+echo.
+pause
