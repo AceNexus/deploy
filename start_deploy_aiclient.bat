@@ -13,7 +13,7 @@ if not exist "%CONFIGS_DIR%" mkdir "%CONFIGS_DIR%"
 
 echo [2/3] Starting AIClient-2-API via Docker...
 docker run -d ^
-  -p 3000:3000 ^
+  -p 3100:3100 ^
   -p 8085-8087:8085-8087 ^
   -p 1455:1455 ^
   -p 19876-19880:19876-19880 ^
@@ -28,7 +28,7 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
-echo [3/3] Container started. Web UI: http://localhost:3000  (default password: admin123)
+echo [3/3] Container started. Web UI: http://localhost:3100  (default password: admin123)
 echo Streaming logs (Ctrl+C to stop watching, container keeps running)...
 echo.
 docker logs -f %CONTAINER_NAME%

@@ -6,13 +6,13 @@
 
 | 服務                 | Port  | 協定   | 啟動腳本                              | 說明                               |
 |:-------------------|:------|:-----|:----------------------------------|:---------------------------------|
+| **Tempo**          | 3000  | HTTP | `start_deploy_tempo.bat`          | Grafana 視覺化 UI                   |
+|                    | 3200  | HTTP | `start_deploy_tempo.bat`          | Tempo Trace 查詢 API               |
+|                    | 4317  | gRPC | `start_deploy_tempo.bat`          | OTLP gRPC Receiver (服務送 trace 用) |
+|                    | 4318  | HTTP | `start_deploy_tempo.bat`          | OTLP HTTP Receiver (服務送 trace 用) |
 | **configservice**  | 8888  | HTTP | `start_deploy_configservice.bat`  | Spring Cloud Config Server       |
 |                    | 5672  | AMQP | `start_deploy_configservice.bat`  | RabbitMQ 訊息佇列 (Spring Cloud Bus) |
 |                    | 15672 | HTTP | `start_deploy_configservice.bat`  | RabbitMQ 管理 UI                   |
-| **Tempo**          | 3200  | HTTP | `start_deploy_tempo.bat`          | Tempo Trace 查詢 API               |
-|                    | 4317  | gRPC | `start_deploy_tempo.bat`          | OTLP gRPC Receiver (服務送 trace 用) |
-|                    | 4318  | HTTP | `start_deploy_tempo.bat`          | OTLP HTTP Receiver (服務送 trace 用) |
-|                    | 3000  | HTTP | `start_deploy_tempo.bat`          | Grafana 視覺化 UI                   |
 | **eurekaservice**  | 8761  | HTTP | `start_deploy_eurekaservice.bat`  | 服務註冊中心 (Eureka)                  |
 | **gatewayservice** | 8080  | HTTP | `start_deploy_gatewayservice.bat` | API Gateway                      |
 | **nexusbot**       | 5001  | HTTP | `start_deploy_nexusbot.bat`       | LINE Bot 主服務                     |
