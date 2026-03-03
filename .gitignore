@@ -23,3 +23,6 @@ logs/
 # OS Specific
 Thumbs.db
 .DS_Store
+
+# Local Configs
+configs_aiclient/
