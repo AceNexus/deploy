@@ -72,5 +72,8 @@ curl -s http://localhost:%SERVER_PORT%/actuator/health
 echo.
 echo Done.
 echo.
-echo [Tailing] nexusbot logs (Ctrl+C to stop)...
-docker compose logs -f nexusbot
+echo [7/7] Tailing logs (Ctrl+C to stop)...
+docker compose logs -f
+
+echo.
+pause
