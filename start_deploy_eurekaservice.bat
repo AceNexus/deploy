@@ -1,10 +1,10 @@
 @echo off
 set DEPLOY_DIR=%~dp0deploy_eurekaservice
 
-echo [1/4] Waiting for Config Server to be accessible...
+echo [1/5] Waiting for Config Server to be accessible...
 set RETRY=0
 :WAIT_CONFIG
-curl -f -s --max-time 5 -u admin:password http://localhost:8888/actuator/health >nul 2>&1
+curl -f -s --max-time 5 http://localhost:8888/actuator/health >nul 2>&1
 if errorlevel 1 (
     set /a RETRY+=1
     if %RETRY% geq 30 (
@@ -18,16 +18,16 @@ if errorlevel 1 (
 )
 echo Config Server OK.
 
-echo [2/4] Stopping old containers...
+echo [2/5] Stopping old containers...
 cd /d "%DEPLOY_DIR%"
 docker compose down
 
-echo [3/4] Building and starting services...
+echo [3/5] Building and starting services...
 docker compose up -d --build
 
-echo [4/4] Checking health...
+echo [4/5] Checking health...
 timeout /t 15 /nobreak >nul
-curl -s -u admin:password http://localhost:8761/actuator/health
+curl -s http://localhost:8761/actuator/health
 
 echo.
 echo Done.
