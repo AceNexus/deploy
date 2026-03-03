@@ -49,5 +49,8 @@ curl -s http://localhost:8080/actuator/health
 echo.
 echo Done.
 echo.
-echo [Tailing] gatewayservice logs (Ctrl+C to stop)...
-docker compose logs -f gatewayservice
+echo [6/6] Tailing logs (Ctrl+C to stop)...
+docker compose logs -f
+
+echo.
+pause
