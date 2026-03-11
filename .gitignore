@@ -3,6 +3,7 @@
 *.iws
 *.iml
 *.ipr
+*.jar
 out/
 
 # VS Code
@@ -26,3 +27,8 @@ Thumbs.db
 
 # Local Configs
 configs_aiclient/
+
+# K8s 實際 Secrets（含真實機密，不提交至版本控制）
+# 請複製 k8s/01-secrets.example.yaml 為 k8s/01-secrets.yaml 並填入實際值
+k8s/secrets.yaml
+k8s/01-secrets.yaml
