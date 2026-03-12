@@ -112,6 +112,50 @@ kubectl get pods -n acenexus -w
 
 ---
 
+## 更新已部署的服務
+
+### 情境一：改了程式碼（重新 build image）
+
+步驟一：重新建立 JAR：
+
+```bash
+./gradlew bootJar
+```
+
+步驟二：複製 JAR 到 build_image 目錄：
+
+```bash
+cp {service}.jar build_image_{service}/
+```
+
+步驟三：重新 build image（tag 不變，直接覆蓋）：
+
+```bash
+docker build -t {service}:local ./build_image_{service}/
+```
+
+步驟四：強制重建 Pod 以載入新 image：
+
+```bash
+kubectl rollout restart deployment/{service} -n acenexus
+```
+
+確認更新完成：
+
+```bash
+kubectl rollout status deployment/{service} -n acenexus
+```
+
+### 情境二：只改了 YAML
+
+重新套用即可，K8s 會自動比對差異並更新：
+
+```bash
+kubectl apply -f k8s/{service}/deployment.yaml
+```
+
+---
+
 ## 常用指令
 
 ### 查看資源

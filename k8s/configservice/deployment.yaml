@@ -1,0 +1,251 @@
+# ============================================================
+# 此檔案包含 4 個 K8s 物件，用 --- 分隔：
+#   1. PersistentVolumeClaim  → RabbitMQ 資料持久化
+#   2. Deployment             → RabbitMQ 容器
+#   3. Service                → RabbitMQ 內部網路入口
+#   4. Deployment             → configservice 容器
+#   5. Service                → configservice 內部網路入口
+# ============================================================
+
+# ============================================================
+# [1/5] PersistentVolumeClaim - RabbitMQ 資料持久化
+# ============================================================
+# PVC 的作用：向 K8s 申請一塊硬碟空間。
+# 若沒有 PVC，Pod 重啟後 RabbitMQ 的 queue、message 全部消失。
+# 對應 docker-compose 的 volumes: rabbitmq-data:
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rabbitmq-data-pvc  # 這塊空間的名字，後面 Deployment 會用 claimName 引用它
+  namespace: acenexus      # 必須和使用它的 Deployment 在同一個 namespace
+spec:
+  accessModes:
+    - ReadWriteOnce        # 同時只能被一個 Pod 掛載（RabbitMQ 單節點夠用）
+  resources:
+    requests:
+      storage: 1Gi         # 申請 1GB 空間
+
+---
+
+# ============================================================
+# [2/5] Deployment - RabbitMQ 容器
+# ============================================================
+# Deployment 的作用：告訴 K8s「我要跑幾個什麼樣的容器」。
+# K8s 會確保指定數量的 Pod 一直在跑，Pod 掛掉會自動重建。
+# 對應 docker-compose 的 rabbitmq: image / environment / healthcheck / deploy
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq      # 這個 Deployment 的名字
+  namespace: acenexus
+spec:
+  replicas: 1         # 同時跑幾個 Pod（對應 docker-compose 預設的 1 個容器）
+
+  # selector 和 template.labels 要一致，K8s 靠這個知道這個 Deployment 管哪些 Pod
+  selector:
+    matchLabels:
+      app: rabbitmq   # 「我管理所有標有 app=rabbitmq 的 Pod」
+
+  template: # 以下是每個 Pod 的規格（可以想成容器的設定檔）
+    metadata:
+      labels:
+        app: rabbitmq # 給 Pod 貼標籤，讓 selector 和 Service 都能找到它
+    spec:
+      containers:
+        - name: rabbitmq                        # 容器名稱（一個 Pod 可以有多個容器）
+          image: rabbitmq:3-management-alpine   # 對應 docker-compose 的 image:
+          imagePullPolicy: IfNotPresent         # 本機有就用本機的，不重複下載；本機沒有才去 Docker Hub 拉
+
+          ports:
+            - containerPort: 5672    # AMQP 連接埠，Spring Boot 服務連 RabbitMQ 用
+            - containerPort: 15672   # RabbitMQ 管理介面（Web UI）
+
+          # 環境變數，對應 docker-compose 的 environment:
+          # 密碼不直接寫在這裡，改從 Secret 物件讀取（Secret 要先用 kubectl create secret 建立）
+          env:
+            - name: RABBITMQ_DEFAULT_USER   # 設定 RabbitMQ 管理員帳號
+              valueFrom:
+                secretKeyRef:
+                  name: configservice-secret  # Secret 物件的名字
+                  key: rabbitmq-user          # Secret 裡對應的 key
+            - name: RABBITMQ_DEFAULT_PASS   # 設定 RabbitMQ 管理員密碼
+              valueFrom:
+                secretKeyRef:
+                  name: configservice-secret
+                  key: rabbitmq-pass
+
+          # 把 PVC 掛入容器的指定路徑，對應 docker-compose 的 volumes: rabbitmq-data:/var/lib/rabbitmq
+          volumeMounts:
+            - name: rabbitmq-data         # 對應下方 volumes[].name
+              mountPath: /var/lib/rabbitmq  # RabbitMQ 預設的資料目錄
+
+          # 資源限制，對應 docker-compose 的 deploy.resources
+          resources:
+            requests: # K8s 排程時至少要保留給它的資源（決定 Pod 放在哪個 Node）
+              memory: 128Mi
+              cpu: 100m            # 100m = 0.1 顆 CPU（m = millicores）
+            limits: # 容器最多能用的資源上限，超過會被 OOM kill 或 throttle
+              memory: 256Mi
+              cpu: 500m            # 500m = 0.5 顆 CPU
+
+          # readinessProbe：K8s 定期執行這個指令，判斷容器是否「準備好接收流量」
+          # 只有 readinessProbe 通過，Service 才會把流量導進來
+          # 對應 docker-compose 的 healthcheck:
+          readinessProbe:
+            exec:
+              command: [ "rabbitmq-diagnostics", "check_port_connectivity" ]
+            initialDelaySeconds: 20  # 容器啟動後等 20 秒再開始第一次檢查（預留啟動時間）
+            periodSeconds: 10        # 之後每 10 秒檢查一次
+            failureThreshold: 5      # 連續失敗 5 次才標記為 not ready（50 秒容忍時間）
+            timeoutSeconds: 10       # 單次檢查超過 10 秒視為失敗（預設 1 秒，rabbitmq-diagnostics 需要更長時間）
+
+      # 宣告這個 Pod 要使用哪些 Volume
+      # volumeMounts 是「容器內掛在哪」，volumes 是「Volume 的來源是什麼」
+      volumes:
+        - name: rabbitmq-data           # 名字要和 volumeMounts[].name 一致
+          persistentVolumeClaim:
+            claimName: rabbitmq-data-pvc  # 對應上方建立的 PVC 名稱
+
+---
+
+# ============================================================
+# [3/5] Service - RabbitMQ 內部網路入口
+# ============================================================
+# Service 的作用：給 Pod 一個固定的網路入口。
+# Pod 的 IP 每次重啟都會變，但 Service 的名稱永遠不變。
+# 其他服務只需要連 "rabbitmq:5672" 就找得到，不需要知道 Pod 的 IP。
+# 對應 docker-compose 的 networks: acenexus-network（讓服務用名稱互相找到）
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq      # ← 這個名字就是其他服務連線時用的 hostname
+  namespace: acenexus # 所以 RABBITMQ_HOST=rabbitmq 這個設定在 K8s 裡完全相容
+spec:
+  selector:
+    app: rabbitmq     # 把流量轉給所有標有 app=rabbitmq 的 Pod
+  ports:
+    - name: amqp
+      port: 5672        # Service 對外暴露的 port（其他服務連這個）
+      targetPort: 5672  # 轉發到 Pod 的哪個 port（對應容器的 containerPort）
+    - name: management
+      port: 15672
+      targetPort: 15672
+  type: ClusterIP       # 只在 K8s cluster 內部可存取，外部連不進來
+    # 若要從本機瀏覽器開管理介面，需執行：
+  # kubectl port-forward svc/rabbitmq 15672:15672 -n acenexus
+
+---
+
+# ============================================================
+# [4/5] Deployment - configservice 容器
+# ============================================================
+# 對應 docker-compose 的 configservice: image / environment / healthcheck / deploy
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: configservice
+  namespace: acenexus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: configservice
+  template:
+    metadata:
+      labels:
+        app: configservice
+    spec:
+      # initContainers：在主容器啟動前先執行的容器，執行完才繼續。
+      # 作用：等待 RabbitMQ 準備好，避免 configservice 啟動時連不到 RabbitMQ 而失敗。
+      # 對應 docker-compose 的 depends_on: rabbitmq: condition: service_healthy
+      initContainers:
+        - name: wait-for-rabbitmq
+          image: busybox:1.36  # 輕量工具箱 image，只用來跑簡單的 shell 指令
+          # nc -z：只嘗試 TCP 連線，不傳資料（-z = zero I/O mode）
+          # 每 5 秒試一次，直到 rabbitmq:5672 可以連通，才結束讓主容器啟動
+          command: [ 'sh', '-c', 'until nc -z rabbitmq 5672; do echo waiting for rabbitmq; sleep 5; done' ]
+
+      containers:
+        - name: configservice
+          image: configservice:local  # 本地 build 的 image（執行 build-images.bat 產生）
+          imagePullPolicy: Never      # Never = 只用本地 image，不去網路拉
+          # 若改成 IfNotPresent 且本地沒有，會嘗試去 Docker Hub 拉而失敗
+          ports:
+            - containerPort: 8888
+
+          # 環境變數，對應 docker-compose 的 environment:
+          env:
+            - name: SECURITY_USERNAME   # Config Server 的 HTTP Basic Auth 帳號
+              valueFrom:
+                secretKeyRef:
+                  name: configservice-secret
+                  key: security-username
+            - name: SECURITY_PASSWORD   # Config Server 的 HTTP Basic Auth 密碼
+              valueFrom:
+                secretKeyRef:
+                  name: configservice-secret
+                  key: security-password
+            - name: ENCRYPT_KEY         # JCE 加解密金鑰，用於 {cipher} 前綴的設定值
+              valueFrom:
+                secretKeyRef:
+                  name: configservice-secret
+                  key: encrypt-key
+            - name: RABBITMQ_HOST
+              value: "rabbitmq"         # 直接寫 Service name，K8s DNS 會自動解析成 Pod IP
+            - name: RABBITMQ_PORT
+              value: "5672"             # 明確指定，避免 K8s 自動注入 RABBITMQ_PORT=tcp://ip:port 導致 Spring Boot 解析失敗
+            - name: RABBITMQ_USER       # Spring Cloud Bus 連 RabbitMQ 用的帳號
+              valueFrom:
+                secretKeyRef:
+                  name: configservice-secret
+                  key: rabbitmq-user
+            - name: RABBITMQ_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: configservice-secret
+                  key: rabbitmq-pass
+            - name: TRACING_SAMPLING_PROBABILITY
+              value: "0.0"              # 0.0 = 關閉分散式追蹤，不需要 Tempo 也能正常運作
+
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 200m
+            limits:
+              memory: 512Mi
+              cpu: 1000m   # 1000m = 1 顆 CPU
+
+          # readinessProbe：用 wget 帶 HTTP Basic Auth 打 /actuator/health，確認回應包含 "UP"
+          # 不用 httpGet 是因為 configservice 有 Basic Auth，httpGet 無法帶帳密，會收到 401 永遠失敗
+          # $SECURITY_USERNAME / $SECURITY_PASSWORD 由 sh -c 展開，來自上方 env 區塊的 Secret
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - wget -qO- --user="$SECURITY_USERNAME" --password="$SECURITY_PASSWORD" http://localhost:8888/actuator/health | grep -q '"status":"UP"'
+            initialDelaySeconds: 30   # 等 30 秒後才開始檢查（JVM 啟動需要時間）
+            periodSeconds: 15         # 每 15 秒檢查一次
+            failureThreshold: 5       # 連續失敗 5 次（75 秒）才標記為 not ready
+
+---
+
+# ============================================================
+# [5/5] Service - configservice 內部網路入口
+# ============================================================
+# 其他服務（eurekaservice、nexusbot 等）透過 "configservice:8888" 連到這裡
+# 對應 docker-compose 各服務設定的 CONFIG_SERVER_URI=http://configservice:8888
+apiVersion: v1
+kind: Service
+metadata:
+  name: configservice   # ← CONFIG_SERVER_URI=http://configservice:8888 就是連這個 Service
+  namespace: acenexus
+spec:
+  selector:
+    app: configservice
+  ports:
+    - port: 8888
+      targetPort: 8888
+  type: ClusterIP         # Config Server 不需要對外，只給 cluster 內部的服務存取
+    # 若要從本機測試，執行：
+  # kubectl port-forward svc/configservice 8888:8888 -n acenexus
