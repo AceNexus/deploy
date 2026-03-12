@@ -1,0 +1,130 @@
+# ============================================================
+# 此檔案包含 2 個 K8s 物件，用 --- 分隔：
+#   1. Deployment → eurekaservice 容器
+#   2. Service    → eurekaservice 內部網路入口
+# ============================================================
+
+# ============================================================
+# [1/2] Deployment - eurekaservice 容器
+# ============================================================
+# 對應 docker-compose 的 eurekaservice: image / environment / healthcheck / deploy
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eurekaservice
+  namespace: acenexus
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: eurekaservice
+
+  template:
+    metadata:
+      labels:
+        app: eurekaservice
+    spec:
+      # initContainers：等待 configservice 準備好後才啟動。
+      # eurekaservice 啟動時會向 Config Server 拉取設定，Config Server 未就緒會導致啟動失敗。
+      # 對應 docker-compose 的 depends_on: configservice: condition: service_healthy
+      initContainers:
+        - name: wait-for-configservice
+          image: busybox:1.36  # 輕量工具箱 image，只用來跑簡單的 shell 指令
+          # nc -z：只嘗試 TCP 連線，不傳資料（-z = zero I/O mode）
+          # 每 5 秒試一次，直到 configservice:8888 可以連通，才結束讓主容器啟動
+          command: ['sh', '-c', 'until nc -z configservice 8888; do echo waiting for configservice; sleep 5; done']
+
+      containers:
+        - name: eurekaservice
+          image: eurekaservice:local  # 本地 build 的 image
+          imagePullPolicy: Never      # Never = 只用本地 image，不去網路拉
+          # 若改成 IfNotPresent 且本地沒有，會嘗試去 Docker Hub 拉而失敗
+          ports:
+            - containerPort: 8761
+
+          # 環境變數，對應 docker-compose 的 environment:
+          env:
+            - name: SERVER_HOST
+              value: "eurekaservice"    # K8s Service name，讓 Eureka 知道自己的對外位址
+            - name: SERVER_PORT
+              value: "8761"
+            - name: SPRING_PROFILES_ACTIVE
+              value: "prod"             # prod profile 啟用 Config Server 和 Eureka 整合
+            - name: SECURITY_USERNAME   # Eureka 管理介面的 HTTP Basic Auth 帳號
+              valueFrom:
+                secretKeyRef:
+                  name: eurekaservice-secret
+                  key: security-username
+            - name: SECURITY_PASSWORD   # Eureka 管理介面的 HTTP Basic Auth 密碼
+              valueFrom:
+                secretKeyRef:
+                  name: eurekaservice-secret
+                  key: security-password
+            - name: CONFIG_SERVER_URI
+              value: "http://configservice:8888"  # 直接指向 K8s 內部的 configservice Service
+            - name: CONFIG_SERVER_USERNAME  # 連接 Config Server 的帳號（= configservice 的 SECURITY_USERNAME）
+              valueFrom:
+                secretKeyRef:
+                  name: eurekaservice-secret
+                  key: config-server-username
+            - name: CONFIG_SERVER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: eurekaservice-secret
+                  key: config-server-password
+            - name: RABBITMQ_HOST
+              value: "rabbitmq"         # 直接寫 Service name，K8s DNS 會自動解析成 Pod IP
+            - name: RABBITMQ_PORT
+              value: "5672"             # 明確指定，避免 K8s 自動注入 RABBITMQ_PORT=tcp://ip:port 導致 Spring Boot 解析失敗
+            - name: RABBITMQ_USERNAME   # Spring Cloud Bus 連 RabbitMQ 用的帳號
+              valueFrom:
+                secretKeyRef:
+                  name: eurekaservice-secret
+                  key: rabbitmq-username
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: eurekaservice-secret
+                  key: rabbitmq-password
+            - name: TRACING_SAMPLING_PROBABILITY
+              value: "0.0"              # 0.0 = 關閉分散式追蹤，不需要 Tempo 也能正常運作
+
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 200m
+            limits:
+              memory: 512Mi
+              cpu: 1000m   # 1000m = 1 顆 CPU
+
+          # readinessProbe：打 /actuator/health 確認 Spring Boot 完全啟動
+          # eurekaservice 的 actuator 不需要 Basic Auth，可直接用 httpGet
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8761
+            initialDelaySeconds: 30   # 等 30 秒後才開始檢查（JVM 啟動需要時間）
+            periodSeconds: 15         # 每 15 秒檢查一次
+            failureThreshold: 5       # 連續失敗 5 次（75 秒）才標記為 not ready
+
+---
+
+# ============================================================
+# [2/2] Service - eurekaservice 內部網路入口
+# ============================================================
+# 其他服務（gatewayservice、nexusbot 等）透過 "eurekaservice:8761" 向 Eureka 註冊
+apiVersion: v1
+kind: Service
+metadata:
+  name: eurekaservice   # ← 其他服務設定 EUREKA_SERVER_URL=http://eurekaservice:8761 就是連這個
+  namespace: acenexus
+spec:
+  selector:
+    app: eurekaservice
+  ports:
+    - port: 8761
+      targetPort: 8761
+  type: ClusterIP         # Eureka 不需要對外，只給 cluster 內部的服務存取
+                          # 若要從本機查看 Eureka 管理介面，執行：
+                          # kubectl port-forward svc/eurekaservice 8761:8761 -n acenexus
