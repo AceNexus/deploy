@@ -11,22 +11,33 @@
 
 ## 部署步驟
 
-### 步驟一：建立 build_image_gatewayservice/ 目錄
+### 步驟一：準備 build_image_gatewayservice/ 目錄
 
-放 Dockerfile 和 JAR 檔，專門用來 build image。
+確認 `build_image_gatewayservice/` 已存在且包含 Dockerfile 與 JAR 檔。
+若尚未建立，先執行 `./gradlew bootJar` 產生 JAR，再複製過來：
 
 ```bash
-mkdir build_image_gatewayservice
-cp deploy_gatewayservice/Dockerfile build_image_gatewayservice/
-cp deploy_gatewayservice/gatewayservice.jar build_image_gatewayservice/
+cp gatewayservice/build/libs/gatewayservice.jar build_image_gatewayservice/
 ```
 
 ### 步驟二：建立 Secret
 
 將敏感變數存入 K8s Secret，YAML 裡透過 `secretKeyRef` 引用。
 
+`jwt-secret` 需至少 32 bytes（256 bits）才符合 HMAC-SHA256 規範，請以下方指令產生：
+
 ```bash
-kubectl create secret generic gatewayservice-secret --namespace=acenexus --from-literal=security-username=<帳號> --from-literal=security-password=<密碼> --from-literal=config-server-username=<configservice帳號> --from-literal=config-server-password=<configservice密碼> --from-literal=rabbitmq-username=<RabbitMQ帳號> --from-literal=rabbitmq-password=<RabbitMQ密碼> --from-literal=jwt-secret=<JWT金鑰>
+openssl rand -base64 32
+```
+
+```bash
+kubectl create secret generic gatewayservice-secret --namespace=acenexus --from-literal=security-username=admin --from-literal=security-password=password --from-literal=config-server-username=admin --from-literal=config-server-password=password --from-literal=rabbitmq-username=admin --from-literal=rabbitmq-password=password --from-literal=jwt-secret=<openssl rand -base64 32 產生的金鑰>
+```
+
+範例
+
+```bash
+kubectl create secret generic gatewayservice-secret --namespace=acenexus --from-literal=security-username=admin --from-literal=security-password=password --from-literal=config-server-username=admin --from-literal=config-server-password=password --from-literal=rabbitmq-username=admin --from-literal=rabbitmq-password=password --from-literal=jwt-secret=xK2pL9mN3qR7sT1vW5yZ8bC4dF6hJ0eA2gI3kM7oP9rU=
 ```
 
 確認建立成功：

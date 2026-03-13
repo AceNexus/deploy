@@ -14,14 +14,13 @@
 
 ## 部署步驟
 
-### 步驟一：建立 build_image_configservice/ 目錄
+### 步驟一：準備 build_image_configservice/ 目錄
 
-放 Dockerfile 和 JAR 檔，專門用來 build image。
+確認 `build_image_configservice/` 已存在且包含 Dockerfile 與 JAR 檔。
+若尚未建立，先執行 `./gradlew bootJar` 產生 JAR，再複製過來：
 
 ```bash
-mkdir build_image_configservice
-cp deploy_configservice/Dockerfile build_image_configservice/
-cp deploy_configservice/configservice.jar build_image_configservice/
+cp configservice/build/libs/configservice.jar build_image_configservice/
 ```
 
 ### 步驟二：建立 Secret
@@ -29,7 +28,13 @@ cp deploy_configservice/configservice.jar build_image_configservice/
 將敏感變數存入 K8s Secret，YAML 裡透過 `secretKeyRef` 引用。
 
 ```bash
-kubectl create secret generic configservice-secret --namespace=acenexus --from-literal=security-username=<帳號> --from-literal=security-password=<密碼> --from-literal=encrypt-key=<加密金鑰> --from-literal=rabbitmq-user=<RabbitMQ帳號> --from-literal=rabbitmq-pass=<RabbitMQ密碼>
+kubectl create secret generic configservice-secret --namespace=acenexus --from-literal=security-username=admin --from-literal=security-password=password --from-literal=encrypt-key=<加密金鑰> --from-literal=rabbitmq-user=admin --from-literal=rabbitmq-pass=password
+```
+
+範例
+
+```bash
+kubectl create secret generic configservice-secret --namespace=acenexus --from-literal=security-username=admin --from-literal=security-password=password --from-literal=encrypt-key=1103 --from-literal=rabbitmq-user=admin --from-literal=rabbitmq-pass=password
 ```
 
 確認建立成功：

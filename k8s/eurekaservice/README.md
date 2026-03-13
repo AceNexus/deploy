@@ -11,14 +11,13 @@
 
 ## 部署步驟
 
-### 步驟一：建立 build_image_eurekaservice/ 目錄
+### 步驟一：準備 build_image_eurekaservice/ 目錄
 
-放 Dockerfile 和 JAR 檔，專門用來 build image。
+確認 `build_image_eurekaservice/` 已存在且包含 Dockerfile 與 JAR 檔。
+若尚未建立，先執行 `./gradlew bootJar` 產生 JAR，再複製過來：
 
 ```bash
-mkdir build_image_eurekaservice
-cp deploy_eurekaservice/Dockerfile build_image_eurekaservice/
-cp deploy_eurekaservice/eurekaservice.jar build_image_eurekaservice/
+cp eurekaservice/build/libs/eurekaservice.jar build_image_eurekaservice/
 ```
 
 ### 步驟二：建立 Secret
@@ -26,7 +25,13 @@ cp deploy_eurekaservice/eurekaservice.jar build_image_eurekaservice/
 將敏感變數存入 K8s Secret，YAML 裡透過 `secretKeyRef` 引用。
 
 ```bash
-kubectl create secret generic eurekaservice-secret --namespace=acenexus --from-literal=security-username=<帳號> --from-literal=security-password=<密碼> --from-literal=config-server-username=<configservice帳號> --from-literal=config-server-password=<configservice密碼> --from-literal=rabbitmq-username=<RabbitMQ帳號> --from-literal=rabbitmq-password=<RabbitMQ密碼>
+kubectl create secret generic eurekaservice-secret --namespace=acenexus --from-literal=security-username=admin --from-literal=security-password=password --from-literal=config-server-username=admin --from-literal=config-server-password=password --from-literal=rabbitmq-username=admin --from-literal=rabbitmq-password=password
+```
+
+範例
+
+```bash
+kubectl create secret generic eurekaservice-secret --namespace=acenexus --from-literal=security-username=admin --from-literal=security-password=password --from-literal=config-server-username=admin --from-literal=config-server-password=password --from-literal=rabbitmq-username=admin --from-literal=rabbitmq-password=password
 ```
 
 確認建立成功：
