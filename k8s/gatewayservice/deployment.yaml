@@ -1,0 +1,144 @@
+# ============================================================
+# 此檔案包含 2 個 K8s 物件，用 --- 分隔：
+#   1. Deployment → gatewayservice 容器
+#   2. Service    → gatewayservice 網路入口
+# ============================================================
+
+# ============================================================
+# [1/2] Deployment - gatewayservice 容器
+# ============================================================
+# 對應 docker-compose 的 gatewayservice: image / environment / healthcheck / deploy
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gatewayservice
+  namespace: acenexus
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: gatewayservice
+
+  template:
+    metadata:
+      labels:
+        app: gatewayservice
+    spec:
+      # initContainers：依序等待 configservice 和 eurekaservice 就緒後才啟動。
+      # gatewayservice 啟動時需要從 Config Server 拉取設定，並向 Eureka 註冊。
+      # 對應 docker-compose 的 depends_on: configservice + eurekaservice: condition: service_healthy
+      initContainers:
+        - name: wait-for-configservice
+          image: busybox:1.36
+          command: [ 'sh', '-c', 'until nc -z configservice 8888; do echo waiting for configservice; sleep 5; done' ]
+        - name: wait-for-eurekaservice
+          image: busybox:1.36
+          command: [ 'sh', '-c', 'until nc -z eurekaservice 8761; do echo waiting for eurekaservice; sleep 5; done' ]
+
+      containers:
+        - name: gatewayservice
+          image: gatewayservice:local  # 本地 build 的 image
+          imagePullPolicy: Never       # Never = 只用本地 image，不去網路拉
+          # 若改成 IfNotPresent 且本地沒有，會嘗試去 Docker Hub 拉而失敗
+          ports:
+            - containerPort: 8080
+
+          # 環境變數，對應 docker-compose 的 environment:
+          env:
+            - name: SERVER_HOST
+              value: "gatewayservice"   # K8s Service name，讓服務知道自己的對外位址
+            - name: SERVER_PORT
+              value: "8080"
+            - name: SPRING_PROFILES_ACTIVE
+              value: "prod"             # prod profile 啟用 Config Server 和 Eureka 整合
+            - name: SECURITY_USERNAME   # Gateway 管理介面的 HTTP Basic Auth 帳號
+              valueFrom:
+                secretKeyRef:
+                  name: gatewayservice-secret
+                  key: security-username
+            - name: SECURITY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: gatewayservice-secret
+                  key: security-password
+            - name: CONFIG_SERVER_URI
+              value: "http://configservice:8888"  # 直接指向 K8s 內部的 configservice Service
+            - name: CONFIG_SERVER_USERNAME  # 連接 Config Server 的帳號（= configservice 的 SECURITY_USERNAME）
+              valueFrom:
+                secretKeyRef:
+                  name: gatewayservice-secret
+                  key: config-server-username
+            - name: CONFIG_SERVER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: gatewayservice-secret
+                  key: config-server-password
+            - name: EUREKA_SERVER_HOST
+              value: "eurekaservice"    # 直接寫 K8s Service name
+            - name: EUREKA_SERVER_PORT
+              value: "8761"
+            - name: EUREKA_INSTANCE_PREFER_IP_ADDRESS
+              value: "false"            # 使用 hostname 而非 IP，K8s 內部 DNS 可正確解析
+            - name: RABBITMQ_HOST
+              value: "rabbitmq"         # 直接寫 Service name，K8s DNS 會自動解析成 Pod IP
+            - name: RABBITMQ_PORT
+              value: "5672"             # 明確指定，避免 K8s 自動注入 RABBITMQ_PORT=tcp://ip:port 導致 Spring Boot 解析失敗
+            - name: RABBITMQ_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: gatewayservice-secret
+                  key: rabbitmq-username
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: gatewayservice-secret
+                  key: rabbitmq-password
+            - name: JWT_SECRET          # JWT 簽章金鑰，用於驗證 Bearer Token
+              valueFrom:
+                secretKeyRef:
+                  name: gatewayservice-secret
+                  key: jwt-secret
+            - name: TRACING_SAMPLING_PROBABILITY
+              value: "0.0"              # 0.0 = 關閉分散式追蹤，不需要 Tempo 也能正常運作
+
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 200m
+            limits:
+              memory: 512Mi
+              cpu: 1000m   # 1000m = 1 顆 CPU
+
+          # readinessProbe：打 /actuator/health 確認 Spring Boot 完全啟動
+          # /actuator/health 已設定為 JWT bypass，可直接用 httpGet 不需帶憑證
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 30   # 等 30 秒後才開始檢查（JVM 啟動需要時間）
+            periodSeconds: 15         # 每 15 秒檢查一次
+            failureThreshold: 5       # 連續失敗 5 次（75 秒）才標記為 not ready
+
+---
+
+# ============================================================
+# [2/2] Service - gatewayservice 網路入口
+# ============================================================
+# 所有外部流量的統一入口（LINE Webhook、前端請求等）
+# 正式環境：透過 Ingress + LoadBalancer 對外暴露
+# 本機測試：使用 port-forward 暫時開放
+apiVersion: v1
+kind: Service
+metadata:
+  name: gatewayservice
+  namespace: acenexus
+spec:
+  selector:
+    app: gatewayservice
+  ports:
+    - port: 8080
+      targetPort: 8080
+  type: ClusterIP           # 本機與正式環境皆使用 ClusterIP，由 Ingress 控制對外流量
+  # 若要從本機測試，執行：
+  # kubectl port-forward svc/gatewayservice 8080:8080 -n acenexus
