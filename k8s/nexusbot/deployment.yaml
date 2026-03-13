@@ -31,13 +31,16 @@ spec:
       initContainers:
         - name: wait-for-configservice
           image: busybox:1.36
-          command: ['sh', '-c', 'until nc -z configservice 8888; do echo waiting for configservice; sleep 5; done']
+          command: [ 'sh', '-c', 'until nc -z configservice 8888; do echo waiting for configservice; sleep 5; done' ]
         - name: wait-for-eurekaservice
           image: busybox:1.36
-          command: ['sh', '-c', 'until nc -z eurekaservice 8761; do echo waiting for eurekaservice; sleep 5; done']
+          command: [ 'sh', '-c', 'until nc -z eurekaservice 8761; do echo waiting for eurekaservice; sleep 5; done' ]
         - name: wait-for-gatewayservice
           image: busybox:1.36
-          command: ['sh', '-c', 'until nc -z gatewayservice 8080; do echo waiting for gatewayservice; sleep 5; done']
+          command: [ 'sh', '-c', 'until nc -z gatewayservice 8080; do echo waiting for gatewayservice; sleep 5; done' ]
+
+      # JVM 啟動慢，給足 graceful shutdown 時間（preStop 5s + Spring shutdown）
+      terminationGracePeriodSeconds: 60
 
       containers:
         - name: nexusbot
@@ -112,6 +115,8 @@ spec:
               value: "8761"
             - name: EUREKA_INSTANCE_PREFER_IP_ADDRESS
               value: "false"            # 使用 hostname 而非 IP，K8s 內部 DNS 可正確解析
+            - name: EUREKA_INSTANCE_HOSTNAME
+              value: "nexusbot"         # 強制用 K8s Service name 向 Eureka 註冊，避免 Gateway 解析 Pod hostname 失敗
 
             # LINE Bot
             - name: LINE_BOT_CHANNEL_TOKEN
@@ -200,6 +205,13 @@ spec:
               memory: 512Mi
               cpu: 1000m   # 1000m = 1 顆 CPU
 
+          # preStop：讓 K8s 先把此 Pod 從 Service endpoints 移除後再 shutdown，
+          # 確保 Eureka deregister 在有效狀態下完成
+          lifecycle:
+            preStop:
+              exec:
+                command: [ "sh", "-c", "sleep 5" ]
+
           # readinessProbe：打 /actuator/health 確認 Spring Boot 完全啟動
           readinessProbe:
             httpGet:
@@ -229,5 +241,5 @@ spec:
     - port: 5001
       targetPort: 5001
   type: ClusterIP           # 不直接對外，由 gatewayservice 轉發流量
-                            # 若要從本機測試，執行：
-                            # kubectl port-forward svc/nexusbot 5001:5001 -n acenexus
+  # 若要從本機測試，執行：
+  # kubectl port-forward svc/nexusbot 5001:5001 -n acenexus

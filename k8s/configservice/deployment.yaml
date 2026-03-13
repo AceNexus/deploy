@@ -131,7 +131,7 @@ spec:
       port: 15672
       targetPort: 15672
   type: ClusterIP       # 只在 K8s cluster 內部可存取，外部連不進來
-    # 若要從本機瀏覽器開管理介面，需執行：
+  # 若要從本機瀏覽器開管理介面，需執行：
   # kubectl port-forward svc/rabbitmq 15672:15672 -n acenexus
 
 ---
@@ -165,36 +165,36 @@ spec:
           # 每 5 秒試一次，直到 rabbitmq:5672 可以連通，才結束讓主容器啟動
           command: [ 'sh', '-c', 'until nc -z rabbitmq 5672; do echo waiting for rabbitmq; sleep 5; done' ]
 
+      terminationGracePeriodSeconds: 40
+
       containers:
         - name: configservice
           image: configservice:local  # 本地 build 的 image（執行 build-images.bat 產生）
           imagePullPolicy: Never      # Never = 只用本地 image，不去網路拉
-          # 若改成 IfNotPresent 且本地沒有，會嘗試去 Docker Hub 拉而失敗
           ports:
             - containerPort: 8888
 
-          # 環境變數，對應 docker-compose 的 environment:
           env:
-            - name: SECURITY_USERNAME   # Config Server 的 HTTP Basic Auth 帳號
+            - name: SECURITY_USERNAME
               valueFrom:
                 secretKeyRef:
                   name: configservice-secret
                   key: security-username
-            - name: SECURITY_PASSWORD   # Config Server 的 HTTP Basic Auth 密碼
+            - name: SECURITY_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: configservice-secret
                   key: security-password
-            - name: ENCRYPT_KEY         # JCE 加解密金鑰，用於 {cipher} 前綴的設定值
+            - name: ENCRYPT_KEY
               valueFrom:
                 secretKeyRef:
                   name: configservice-secret
                   key: encrypt-key
             - name: RABBITMQ_HOST
-              value: "rabbitmq"         # 直接寫 Service name，K8s DNS 會自動解析成 Pod IP
+              value: "rabbitmq"
             - name: RABBITMQ_PORT
-              value: "5672"             # 明確指定，避免 K8s 自動注入 RABBITMQ_PORT=tcp://ip:port 導致 Spring Boot 解析失敗
-            - name: RABBITMQ_USER       # Spring Cloud Bus 連 RabbitMQ 用的帳號
+              value: "5672"
+            - name: RABBITMQ_USER
               valueFrom:
                 secretKeyRef:
                   name: configservice-secret
@@ -205,7 +205,7 @@ spec:
                   name: configservice-secret
                   key: rabbitmq-pass
             - name: TRACING_SAMPLING_PROBABILITY
-              value: "0.0"              # 0.0 = 關閉分散式追蹤，不需要 Tempo 也能正常運作
+              value: "0.0"
 
           resources:
             requests:
@@ -215,18 +215,21 @@ spec:
               memory: 512Mi
               cpu: 1000m   # 1000m = 1 顆 CPU
 
-          # readinessProbe：用 wget 帶 HTTP Basic Auth 打 /actuator/health，確認回應包含 "UP"
-          # 不用 httpGet 是因為 configservice 有 Basic Auth，httpGet 無法帶帳密，會收到 401 永遠失敗
-          # $SECURITY_USERNAME / $SECURITY_PASSWORD 由 sh -c 展開，來自上方 env 區塊的 Secret
+          lifecycle:
+            preStop:
+              exec:
+                command: [ "sh", "-c", "sleep 5" ]
+
           readinessProbe:
             exec:
               command:
                 - sh
                 - -c
-                - wget -qO- --user="$SECURITY_USERNAME" --password="$SECURITY_PASSWORD" http://localhost:8888/actuator/health | grep -q '"status":"UP"'
-            initialDelaySeconds: 30   # 等 30 秒後才開始檢查（JVM 啟動需要時間）
-            periodSeconds: 15         # 每 15 秒檢查一次
-            failureThreshold: 5       # 連續失敗 5 次（75 秒）才標記為 not ready
+                # BusyBox wget 不支援 --user/--password，改用 URL 嵌入認證
+                - wget -qO- "http://${SECURITY_USERNAME}:${SECURITY_PASSWORD}@localhost:8888/actuator/health" | grep -q '"status":"UP"'
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 5
 
 ---
 
@@ -247,5 +250,5 @@ spec:
     - port: 8888
       targetPort: 8888
   type: ClusterIP         # Config Server 不需要對外，只給 cluster 內部的服務存取
-    # 若要從本機測試，執行：
+  # 若要從本機測試，執行：
   # kubectl port-forward svc/configservice 8888:8888 -n acenexus

@@ -63,16 +63,13 @@ echo.
 echo !FINAL_URL! | clip
 echo [成功] 網址已複製到剪貼簿。
 
-:: 更新 nexusbot NEXUSBOT_BASE_URL 並重啟容器
-set "NEXUSBOT_ENV=%~dp0deploy_nexusbot\.env"
-if exist "!NEXUSBOT_ENV!" (
-    echo [資訊] 正在更新 nexusbot NEXUSBOT_BASE_URL...
-    powershell -Command "(Get-Content '!NEXUSBOT_ENV!') -replace '^NEXUSBOT_BASE_URL=.*', 'NEXUSBOT_BASE_URL=!FINAL_URL!' | Set-Content '!NEXUSBOT_ENV!'"
-    echo [資訊] 正在重啟 nexusbot 容器套用新網址...
-    pushd "%~dp0deploy_nexusbot"
-    docker compose up -d
-    popd
-    echo [成功] nexusbot 已更新並重啟。
+:: 更新 nexusbot NEXUSBOT_BASE_URL（K8s）
+echo [資訊] 正在更新 nexusbot NEXUSBOT_BASE_URL（K8s）...
+kubectl set env deployment/nexusbot NEXUSBOT_BASE_URL=!FINAL_URL! -n acenexus
+if %ERRORLEVEL% equ 0 (
+    echo [成功] nexusbot NEXUSBOT_BASE_URL 已更新，K8s 將自動滾動重啟 Pod。
+) else (
+    echo [警告] kubectl set env 失敗，請確認 K8s 叢集是否正常運行。
 )
 
 :: 更新 LINE Bot 1 Webhook（nexusbot :5001）

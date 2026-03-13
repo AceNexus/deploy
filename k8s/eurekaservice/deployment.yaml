@@ -33,7 +33,10 @@ spec:
           image: busybox:1.36  # 輕量工具箱 image，只用來跑簡單的 shell 指令
           # nc -z：只嘗試 TCP 連線，不傳資料（-z = zero I/O mode）
           # 每 5 秒試一次，直到 configservice:8888 可以連通，才結束讓主容器啟動
-          command: ['sh', '-c', 'until nc -z configservice 8888; do echo waiting for configservice; sleep 5; done']
+          command: [ 'sh', '-c', 'until nc -z configservice 8888; do echo waiting for configservice; sleep 5; done' ]
+
+      # preStop sleep 15s + Spring Boot graceful shutdown，需留足夠時間
+      terminationGracePeriodSeconds: 40
 
       containers:
         - name: eurekaservice
@@ -98,6 +101,15 @@ spec:
               memory: 512Mi
               cpu: 1000m   # 1000m = 1 顆 CPU
 
+          # preStop：Pod 被標記刪除時，先 sleep 15s 讓 K8s endpoint controller
+          # 有時間把此 Pod 從 Service endpoints 移除，再才開始 Spring Boot shutdown。
+          # 這可防止 shutdown 中的 Pod 仍收到 heartbeat 請求而回傳 401，
+          # 避免 Eureka client 進入 quarantine 無法自動 re-register 的問題。
+          lifecycle:
+            preStop:
+              exec:
+                command: [ "sh", "-c", "sleep 15" ]
+
           # readinessProbe：打 /actuator/health 確認 Spring Boot 完全啟動
           # eurekaservice 的 actuator 不需要 Basic Auth，可直接用 httpGet
           readinessProbe:
@@ -126,5 +138,5 @@ spec:
     - port: 8761
       targetPort: 8761
   type: ClusterIP         # Eureka 不需要對外，只給 cluster 內部的服務存取
-                          # 若要從本機查看 Eureka 管理介面，執行：
-                          # kubectl port-forward svc/eurekaservice 8761:8761 -n acenexus
+  # 若要從本機查看 Eureka 管理介面，執行：
+  # kubectl port-forward svc/eurekaservice 8761:8761 -n acenexus

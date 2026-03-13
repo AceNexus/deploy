@@ -1,247 +1,397 @@
 # AceNexus K8s 部署指南
 
+## 目錄
+
+- [架構說明](#架構說明)
+- [前置條件](#前置條件)
+- [首次部署](#首次部署)
+- [日常操作](#日常操作)
+- [更新部署](#更新部署)
+- [常用指令](#常用指令)
+
+---
+
+## 架構說明
+
+```
+LINE Webhook
+  → ngrok (HTTPS)
+    → gatewayservice :8080  [JWT 驗證、請求日誌]
+      → nexusbot :5001      [K8s Service DNS 直連，不走 Eureka]
+```
+
+**服務清單**
+
+| 服務             | Image                        | Port         | 說明                                  |
+|----------------|------------------------------|--------------|-------------------------------------|
+| rabbitmq       | rabbitmq:3-management-alpine | 5672 / 15672 | 訊息佇列，Spring Cloud Bus 用             |
+| configservice  | configservice:local          | 8888         | 設定中心，從 K8s ConfigMap 提供設定檔          |
+| eurekaservice  | eurekaservice:local          | 8761         | 服務註冊（監控用，非路由關鍵路徑）                   |
+| gatewayservice | gatewayservice:local         | 8080         | API Gateway，直連 nexusbot K8s Service |
+| nexusbot       | nexusbot:local               | 5001         | LINE Bot 主程式                        |
+
+**設定檔管理**：所有服務的設定檔（`*-prod.yml`）集中在 `k8s/configs/configmap.yaml`，
+更新後 `kubectl apply` 即可，不需重建 image 也不需 push 到 GitHub。
+
+---
+
 ## 前置條件
 
-- Docker Desktop 已啟動
-- Docker Desktop → Settings → Kubernetes → Enable Kubernetes 已勾選
-
-確認 K8s 正常運作：
+- Docker Desktop 已啟動，並在 Settings → Kubernetes → Enable Kubernetes 已勾選
 
 ```bash
-kubectl get nodes
+kubectl get nodes   # 應看到 docker-desktop Ready
 ```
 
 ---
 
-## 初始設定（只需執行一次）
+## 首次部署
 
-### 建立 Namespace
-
-Namespace 是 K8s 裡的資料夾，所有 AceNexus 的服務都放在 `acenexus` 裡。
+### 步驟 1：建立 Namespace
 
 ```bash
 kubectl create namespace acenexus
 ```
 
-確認建立成功：應看到 acenexus Active，已存在的話會報錯 `already exists`，可以忽略。
-
-```bash
-kubectl get namespace
-```
-
 ---
 
-## 部署新服務的標準流程
+### 步驟 2：建立 Secret
 
-每個服務的部署步驟都相同，只有設定內容不同。
+將所有敏感資訊存入 K8s Secret，部署 YAML 透過 `secretKeyRef` 引用。
 
-### 步驟一：建立 build_image_{service}/ 目錄
-
-放 Dockerfile 和 JAR 檔，專門用來 build image。
-
-```
-build_image_{service}/
-├── Dockerfile
-└── {service}.jar
-```
-
-範例（configservice）：
+**configservice-secret**
 
 ```bash
-mkdir build_image_configservice
-cp deploy_configservice/Dockerfile build_image_configservice/
-cp deploy_configservice/configservice.jar build_image_configservice/
+kubectl create secret generic configservice-secret -n acenexus \
+  --from-literal=security-username=<帳號> \
+  --from-literal=security-password=<密碼> \
+  --from-literal=encrypt-key=<JCE加密金鑰> \
+  --from-literal=rabbitmq-user=<RabbitMQ帳號> \
+  --from-literal=rabbitmq-pass=<RabbitMQ密碼>
 ```
 
-### 步驟二：建立 Secret
-
-將敏感變數存入 K8s Secret，YAML 裡透過 `secretKeyRef` 引用。
+**eurekaservice-secret**
 
 ```bash
-kubectl create secret generic {service}-secret --namespace=acenexus --from-literal=key=value
+kubectl create secret generic eurekaservice-secret -n acenexus \
+  --from-literal=security-username=<帳號> \
+  --from-literal=security-password=<密碼> \
+  --from-literal=config-server-username=<configservice帳號> \
+  --from-literal=config-server-password=<configservice密碼> \
+  --from-literal=rabbitmq-username=<RabbitMQ帳號> \
+  --from-literal=rabbitmq-password=<RabbitMQ密碼>
 ```
 
-確認建立成功：
+**gatewayservice-secret**
+
+```bash
+kubectl create secret generic gatewayservice-secret -n acenexus \
+  --from-literal=security-username=<帳號> \
+  --from-literal=security-password=<密碼> \
+  --from-literal=config-server-username=<configservice帳號> \
+  --from-literal=config-server-password=<configservice密碼> \
+  --from-literal=rabbitmq-username=<RabbitMQ帳號> \
+  --from-literal=rabbitmq-password=<RabbitMQ密碼> \
+  --from-literal=jwt-secret=<JWT簽章金鑰>
+```
+
+**nexusbot-secret**
+
+```bash
+kubectl create secret generic nexusbot-secret -n acenexus \
+  --from-literal=config-server-username=<configservice帳號> \
+  --from-literal=config-server-password=<configservice密碼> \
+  --from-literal=mysql-username=<MySQL帳號> \
+  --from-literal=mysql-password=<MySQL密碼> \
+  --from-literal=rabbitmq-username=<RabbitMQ帳號> \
+  --from-literal=rabbitmq-password=<RabbitMQ密碼> \
+  --from-literal=line-bot-channel-token=<LINE Channel Token> \
+  --from-literal=line-bot-channel-secret=<LINE Channel Secret> \
+  --from-literal=groq-api-key=<Groq API Key> \
+  --from-literal=email-username=<Gmail帳號> \
+  --from-literal=email-password=<Gmail應用程式密碼> \
+  --from-literal=admin-password-seed=<管理員密碼種子> \
+  --from-literal=gemini-proxy-api-key=<Gemini Proxy Key>
+```
+
+確認所有 Secret 已建立：
 
 ```bash
 kubectl get secret -n acenexus
 ```
 
-若需要重建：
+---
+
+### 步驟 3：Build Docker Image
+
+各服務 JAR 需先在各自的服務目錄用 Gradle 建置，再複製到 `build_image_*/` 目錄後 build image。
+
+> **注意**：Windows 系統 Java 預設指向 Java 8，Spring Boot 3.4.x 需要 Java 21：
+> ```powershell
+> $env:JAVA_HOME = 'C:\Users\User\.jdks\temurin-21.0.5'; .\gradlew bootJar
+> ```
+
+**configservice**
 
 ```bash
-kubectl delete secret {service}-secret -n acenexus
+# 在 D:\java\AceNexus\configservice 執行
+./gradlew bootJar
+cp build/libs/configservice.jar ../windows_start/build_image_configservice/
+cd ../windows_start
+docker build -t configservice:local ./build_image_configservice/
 ```
 
-### 步驟三：Build Image
+**eurekaservice**
 
 ```bash
-docker build -t {service}:local ./build_image_{service}/
+# 在 D:\java\AceNexus\eurekaservice 執行
+./gradlew bootJar
+cp build/libs/eurekaservice.jar ../windows_start/build_image_eurekaservice/
+cd ../windows_start
+docker build -t eurekaservice:local ./build_image_eurekaservice/
 ```
 
-確認：
+**gatewayservice**
 
 ```bash
-docker images
+# 在 D:\java\AceNexus\gatewayservice 執行
+./gradlew bootJar
+cp build/libs/gatewayservice.jar ../windows_start/build_image_gatewayservice/
+cd ../windows_start
+docker build -t gatewayservice:local ./build_image_gatewayservice/
 ```
 
-### 步驟四：建立 k8s/{service}/deployment.yaml
-
-描述要跑哪些容器、環境變數、資源限制、健康檢查、依賴等待等。每個服務一個目錄：
-
-```
-k8s/
-├── configservice/
-│   └── deployment.yaml
-├── eurekaservice/
-│   └── deployment.yaml
-└── ...
-```
-
-### 步驟五：套用 YAML
+**nexusbot**
 
 ```bash
-kubectl apply -f k8s/{service}/deployment.yaml
+# 在 D:\java\AceNexus\nexusbot 執行
+./gradlew bootJar
+cp build/libs/nexusbot.jar ../windows_start/build_image_nexusbot/
+cd ../windows_start
+docker build -t nexusbot:local ./build_image_nexusbot/
 ```
 
-確認 Pod 狀態變成 `1/1 Running`：
+---
+
+### 步驟 4：套用所有服務 YAML
+
+```bash
+cd windows_start
+
+# RabbitMQ + configservice
+kubectl apply -f k8s/configservice/deployment.yaml -n acenexus
+
+# eurekaservice
+kubectl apply -f k8s/eurekaservice/deployment.yaml -n acenexus
+
+# gatewayservice
+kubectl apply -f k8s/gatewayservice/deployment.yaml -n acenexus
+
+# nexusbot
+kubectl apply -f k8s/nexusbot/deployment.yaml -n acenexus
+```
+
+監看所有 Pod 啟動：
 
 ```bash
 kubectl get pods -n acenexus -w
 ```
 
+全部變成 `1/1 Running` 後完成。
+
 ---
 
-## 更新已部署的服務
+### 步驟 5：啟動 ngrok
 
-### 情境一：改了程式碼（重新 build image）
-
-步驟一：重新建立 JAR：
+#### 5-1. 建立 ngrok `.env`（只需執行一次）
 
 ```bash
+cp deploy_ngrok/.env.example deploy_ngrok/.env
+```
+
+編輯 `deploy_ngrok/.env`，填入以下內容：
+
+```env
+# 取得網址：https://dashboard.ngrok.com/get-started/your-authtoken
+NGROK_AUTHTOKEN=<你的 ngrok authtoken>
+
+# LINE Bot 主要頻道
+# 取得網址：https://developers.line.biz/console/ → Messaging API → Channel access token
+LINE_CHANNEL_ACCESS_TOKEN=<LINE Channel Access Token>
+LINE_WEBHOOK_PATH=/api/linebot/webhook
+
+# LINE Bot 測試頻道（選填，沒有第二個 Bot 可留空）
+LINE_CHANNEL_ACCESS_TOKEN_TEST=
+LINE_WEBHOOK_PATH_TEST=/api/linebot-test/webhook
+```
+
+#### 5-2. 每次啟動 ngrok
+
+執行 `ngrok-tunnel.bat`，腳本會自動：
+
+1. 啟動 ngrok Docker 容器，將 `localhost:8080`（gateway）對外暴露為 HTTPS 網址
+2. 從 `localhost:4040` 取得動態公開網址並複製到剪貼簿
+3. 執行 `kubectl set env deployment/nexusbot NEXUSBOT_BASE_URL=<url>` 更新 K8s 環境變數
+4. 呼叫 LINE API 自動更新 Bot 的 Webhook 網址
+
+完成後流量路徑：
+
+```
+LINE → https://<ngrok>.ngrok-free.app → localhost:8080 → gatewayservice → nexusbot
+```
+
+監控介面：http://localhost:4040
+
+> **常見錯誤**：`ERR_NGROK_108` = tunnel 數量已滿，
+> 請至 https://dashboard.ngrok.com/agents 手動關閉舊 session 或等待 5 分鐘。
+
+---
+
+### 步驟 6：驗證整個鏈路
+
+```bash
+# 直接打 gateway
+curl http://localhost:8080/actuator/health
+
+# 透過 ngrok 打到 nexusbot（完整路徑）
+curl https://<ngrok-url>/api/linebot/actuator/health -H "ngrok-skip-browser-warning: true"
+```
+
+兩個都回傳 `{"status":"UP"}` 即部署完成。
+
+---
+
+## 日常操作
+
+### 全體重啟
+
+```bash
+kubectl rollout restart deployment -n acenexus
+```
+
+不需要按順序，gateway 改走 K8s DNS 直連後，重啟順序不再影響服務可用性。
+
+重啟後確認：
+
+```bash
+kubectl rollout status deployment -n acenexus --timeout=180s
+```
+
+---
+
+### 停止 / 恢復所有服務
+
+```bash
+# 停止（Pod 消失，設定保留）
+kubectl scale deployment configservice eurekaservice gatewayservice nexusbot rabbitmq \
+  --replicas=0 -n acenexus
+
+# 恢復
+kubectl scale deployment configservice eurekaservice gatewayservice nexusbot rabbitmq \
+  --replicas=1 -n acenexus
+```
+
+---
+
+## 更新部署
+
+### 情境一：只改了服務設定（*-prod.yml）
+
+編輯 `configservice/configs/` 下的設定檔並 push 到 GitHub，然後：
+
+```bash
+# 透過 Spring Cloud Bus 即時刷新（不需重啟 Pod）
+kubectl exec -n acenexus deployment/configservice -- \
+  wget -qO- -X POST "http://${SECURITY_USERNAME}:${SECURITY_PASSWORD}@localhost:8888/actuator/busrefresh"
+```
+
+> busrefresh 只更新 `@RefreshScope` 的 Bean，
+> 若改的是 datasource / eureka 等啟動時才讀的設定，需要重啟對應服務：
+> ```bash
+> kubectl rollout restart deployment/<service> -n acenexus
+> ```
+
+---
+
+### 情境二：改了程式碼（需要重建 image）
+
+以 nexusbot 為例：
+
+```bash
+# 1. 建置 JAR
+cd D:\java\AceNexus\nexusbot
 ./gradlew bootJar
+
+# 2. 複製到 build_image 目錄
+cp build/libs/nexusbot.jar ../windows_start/build_image_nexusbot/
+
+# 3. 重建 image（tag 不變，直接覆蓋）
+cd ../windows_start
+docker build -t nexusbot:local ./build_image_nexusbot/
+
+# 4. 重啟 Pod 載入新 image
+kubectl rollout restart deployment/nexusbot -n acenexus
+kubectl rollout status deployment/nexusbot -n acenexus
 ```
 
-步驟二：複製 JAR 到 build_image 目錄：
+---
+
+### 情境三：改了 K8s YAML（Deployment / Service）
 
 ```bash
-cp {service}.jar build_image_{service}/
+kubectl apply -f k8s/<service>/deployment.yaml -n acenexus
 ```
 
-步驟三：重新 build image（tag 不變，直接覆蓋）：
+若只是調整 env var 或 resource limits，K8s 會自動觸發滾動更新。
+
+---
+
+### 情境四：更新 Secret
 
 ```bash
-docker build -t {service}:local ./build_image_{service}/
-```
+# 刪除舊的再重建
+kubectl delete secret <secret-name> -n acenexus
+kubectl create secret generic <secret-name> -n acenexus --from-literal=key=value ...
 
-步驟四：強制重建 Pod 以載入新 image：
-
-```bash
-kubectl rollout restart deployment/{service} -n acenexus
-```
-
-確認更新完成：
-
-```bash
-kubectl rollout status deployment/{service} -n acenexus
-```
-
-### 情境二：只改了 YAML
-
-重新套用即可，K8s 會自動比對差異並更新：
-
-```bash
-kubectl apply -f k8s/{service}/deployment.yaml
+# 重啟使用該 Secret 的服務
+kubectl rollout restart deployment/<service> -n acenexus
 ```
 
 ---
 
 ## 常用指令
 
-### 查看資源
-
-查看所有 Pod：
+### 查看狀態
 
 ```bash
-kubectl get pods -n acenexus
+kubectl get pods -n acenexus          # 所有 Pod 狀態
+kubectl get pods -n acenexus -w       # 持續監看
+kubectl get svc -n acenexus           # 所有 Service
+kubectl get all -n acenexus           # 所有資源
 ```
 
-查看所有 Service：
+### 查看 Log
 
 ```bash
-kubectl get svc -n acenexus
+kubectl logs -n acenexus deployment/<service>           # 最新 log
+kubectl logs -n acenexus deployment/<service> -f        # 即時串流
+kubectl logs -n acenexus deployment/<service> --tail=50 # 最後 50 行
 ```
 
-查看所有資源：
+### 偵錯
 
 ```bash
-kubectl get all -n acenexus
+# 查看 Pod 詳細事件（啟動失敗時用）
+kubectl describe pod -n acenexus -l app=<service>
+
+# 進入容器執行指令
+kubectl exec -it -n acenexus deployment/<service> -- sh
 ```
 
-持續監看：
+### 暫時開放內部 Service 到本機
 
 ```bash
-kubectl get pods -n acenexus -w
-```
-
-### 查看詳細資訊與 Log
-
-查看 Pod 詳細資訊（包含錯誤事件）：
-
-```bash
-kubectl describe pod <pod-name> -n acenexus
-```
-
-查看 Pod log：
-
-```bash
-kubectl logs <pod-name> -n acenexus
-```
-
-即時串流 log：
-
-```bash
-kubectl logs <pod-name> -n acenexus -f
-```
-
-只看最後 50 行：
-
-```bash
-kubectl logs <pod-name> -n acenexus --tail=50
-```
-
-### 部署 / 更新 / 刪除
-
-套用 YAML（建立或更新）：
-
-```bash
-kubectl apply -f k8s/{service}/deployment.yaml
-```
-
-刪除 YAML 內的所有資源：
-
-```bash
-kubectl delete -f k8s/{service}/deployment.yaml
-```
-
-### 停止與恢復服務
-
-停止服務（Pod 消失，Deployment 保留）：
-
-```bash
-kubectl scale deployment <service> --replicas=0 -n acenexus
-```
-
-恢復服務：
-
-```bash
-kubectl scale deployment <service> --replicas=1 -n acenexus
-```
-
-### 存取服務
-
-將 K8s 內部 Service 暫時暴露到本機：
-
-```bash
-kubectl port-forward svc/<service> <local-port>:<service-port> -n acenexus
+kubectl port-forward svc/eurekaservice 8761:8761 -n acenexus   # Eureka 管理介面
+kubectl port-forward svc/rabbitmq 15672:15672 -n acenexus      # RabbitMQ 管理介面
+kubectl port-forward svc/configservice 8888:8888 -n acenexus   # Config Server
 ```
