@@ -2,9 +2,9 @@
 
 ## 包含的 K8s 物件
 
-| 物件         | 名稱              | 說明                                 |
-|------------|-----------------|------------------------------------|
-| Deployment | `eurekaservice` | Eureka Server 容器                   |
+| 物件         | 名稱              | 說明                              |
+|------------|-----------------|---------------------------------|
+| Deployment | `eurekaservice` | Eureka Server 容器                |
 | Service    | `eurekaservice` | Eureka Server 內部網路入口（ClusterIP） |
 
 ---
@@ -23,12 +23,6 @@ cp eurekaservice/build/libs/eurekaservice.jar build_image_eurekaservice/
 ### 步驟二：建立 Secret
 
 將敏感變數存入 K8s Secret，YAML 裡透過 `secretKeyRef` 引用。
-
-```bash
-kubectl create secret generic eurekaservice-secret --namespace=acenexus --from-literal=security-username=admin --from-literal=security-password=password --from-literal=config-server-username=admin --from-literal=config-server-password=password --from-literal=rabbitmq-username=admin --from-literal=rabbitmq-password=password
-```
-
-範例
 
 ```bash
 kubectl create secret generic eurekaservice-secret --namespace=acenexus --from-literal=security-username=admin --from-literal=security-password=password --from-literal=config-server-username=admin --from-literal=config-server-password=password --from-literal=rabbitmq-username=admin --from-literal=rabbitmq-password=password

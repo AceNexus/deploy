@@ -31,12 +31,6 @@ cp configservice/build/libs/configservice.jar build_image_configservice/
 kubectl create secret generic configservice-secret --namespace=acenexus --from-literal=security-username=admin --from-literal=security-password=password --from-literal=encrypt-key=<加密金鑰> --from-literal=rabbitmq-user=admin --from-literal=rabbitmq-pass=password
 ```
 
-範例
-
-```bash
-kubectl create secret generic configservice-secret --namespace=acenexus --from-literal=security-username=admin --from-literal=security-password=password --from-literal=encrypt-key=1103 --from-literal=rabbitmq-user=admin --from-literal=rabbitmq-pass=password
-```
-
 確認建立成功：
 
 ```bash

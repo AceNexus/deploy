@@ -34,12 +34,6 @@ openssl rand -base64 32
 kubectl create secret generic gatewayservice-secret --namespace=acenexus --from-literal=security-username=admin --from-literal=security-password=password --from-literal=config-server-username=admin --from-literal=config-server-password=password --from-literal=rabbitmq-username=admin --from-literal=rabbitmq-password=password --from-literal=jwt-secret=<openssl rand -base64 32 產生的金鑰>
 ```
 
-範例
-
-```bash
-kubectl create secret generic gatewayservice-secret --namespace=acenexus --from-literal=security-username=admin --from-literal=security-password=password --from-literal=config-server-username=admin --from-literal=config-server-password=password --from-literal=rabbitmq-username=admin --from-literal=rabbitmq-password=password --from-literal=jwt-secret=xK2pL9mN3qR7sT1vW5yZ8bC4dF6hJ0eA2gI3kM7oP9rU=
-```
-
 確認建立成功：
 
 ```bash
