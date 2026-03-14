@@ -195,7 +195,9 @@ spec:
                   key: gemini-proxy-api-key
 
             - name: TRACING_SAMPLING_PROBABILITY
-              value: "0.0"              # 0.0 = 關閉分散式追蹤
+              value: "0.0" # 改成 1.0 可開啟完整追蹤
+            - name: MANAGEMENT_OTLP_TRACING_ENDPOINT
+              value: "http://tempo:4318/v1/traces"  # 送至 K8s 內的 Tempo Service
 
           resources:
             requests:
@@ -240,6 +242,5 @@ spec:
   ports:
     - port: 5001
       targetPort: 5001
-  type: ClusterIP           # 不直接對外，由 gatewayservice 轉發流量
-  # 若要從本機測試，執行：
-  # kubectl port-forward svc/nexusbot 5001:5001 -n acenexus
+  type: LoadBalancer # 本機開發：Docker Desktop K8s 將 localhost:5001 對應至此 Service
+  # 正式環境部署時改回 ClusterIP，由 gatewayservice 做路由

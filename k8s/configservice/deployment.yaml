@@ -205,7 +205,9 @@ spec:
                   name: configservice-secret
                   key: rabbitmq-pass
             - name: TRACING_SAMPLING_PROBABILITY
-              value: "0.0"
+              value: "0.0" # 改成 1.0 可開啟完整追蹤
+            - name: MANAGEMENT_OTLP_TRACING_ENDPOINT
+              value: "http://tempo:4318/v1/traces"  # 送至 K8s 內的 Tempo Service
 
           resources:
             requests:
