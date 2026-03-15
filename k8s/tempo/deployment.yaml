@@ -1,0 +1,165 @@
+# ============================================================
+# 此檔案包含 4 個 K8s 物件，用 --- 分隔：
+#   1. ConfigMap  → tempo.yaml 設定檔
+#   2. PersistentVolumeClaim → trace 資料持久化
+#   3. Deployment → Tempo 容器
+#   4. Service    → Tempo 網路入口（ClusterIP，集群內部使用）
+# ============================================================
+
+# ============================================================
+# [1/4] ConfigMap - Tempo 設定檔
+# ============================================================
+# 對應 deploy_tempo/tempo.yaml，以 ConfigMap 方式掛入容器
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tempo-config
+  namespace: acenexus
+data:
+  tempo.yaml: |
+    server:
+      http_listen_port: 3200
+
+    distributor:
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4317
+            http:
+              endpoint: 0.0.0.0:4318
+
+    ingester:
+      trace_idle_period: 10s
+      max_block_bytes: 1000000
+      max_block_duration: 5m
+
+    compactor:
+      compaction:
+        compaction_window: 1h
+        max_block_bytes: 100000000
+        block_retention: 48h
+        compacted_block_retention: 10m
+
+    storage:
+      trace:
+        backend: local
+        local:
+          path: /var/tempo/blocks
+        wal:
+          path: /var/tempo/wal
+
+    querier:
+      search:
+        prefer_self: 10
+
+---
+
+# ============================================================
+# [2/4] PersistentVolumeClaim - Tempo 資料持久化
+# ============================================================
+# 對應 docker-compose 的 volumes: tempo-data:
+# 若沒有 PVC，Pod 重啟後 trace 資料全部消失
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tempo-data-pvc
+  namespace: acenexus
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+
+---
+
+# ============================================================
+# [3/4] Deployment - Tempo 容器
+# ============================================================
+# 對應 docker-compose 的 tempo: image / command / volumes / ports
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tempo
+  namespace: acenexus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tempo
+  template:
+    metadata:
+      labels:
+        app: tempo
+    spec:
+      containers:
+        - name: tempo
+          image: grafana/tempo:2.6.1
+          imagePullPolicy: IfNotPresent
+          args: ["-config.file=/etc/tempo.yaml"]
+
+          ports:
+            - containerPort: 3200   # Tempo HTTP API
+            - containerPort: 4317   # OTLP gRPC
+            - containerPort: 4318   # OTLP HTTP
+
+          volumeMounts:
+            - name: tempo-config
+              mountPath: /etc/tempo.yaml
+              subPath: tempo.yaml      # 只掛 ConfigMap 中的 tempo.yaml 這個 key
+            - name: tempo-data
+              mountPath: /var/tempo
+
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+              cpu: 500m
+
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3200
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 5
+
+      volumes:
+        - name: tempo-config
+          configMap:
+            name: tempo-config   # 對應上方 ConfigMap 的 name
+        - name: tempo-data
+          persistentVolumeClaim:
+            claimName: tempo-data-pvc
+
+---
+
+# ============================================================
+# [4/4] Service - Tempo 網路入口
+# ============================================================
+# 微服務透過 "tempo:4318" 送 OTLP trace，Grafana 透過 "tempo:3200" 查詢
+# 對應 docker-compose 的 ports + acenexus-network
+apiVersion: v1
+kind: Service
+metadata:
+  name: tempo
+  namespace: acenexus
+spec:
+  selector:
+    app: tempo
+  ports:
+    - name: http
+      port: 3200
+      targetPort: 3200
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318
+  type: ClusterIP
+  # 若要從本機瀏覽器查詢 Tempo API，執行：
+  # kubectl port-forward svc/tempo 3200:3200 -n acenexus
