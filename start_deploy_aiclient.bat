@@ -18,7 +18,6 @@ docker run -d ^
   -p 1455:1455 ^
   -p 19876-19880:19876-19880 ^
   --restart=always ^
-  --network acenexus-network ^
   -v "%CONFIGS_DIR%:/app/configs" ^
   --name %CONTAINER_NAME% ^
   %IMAGE_NAME%
