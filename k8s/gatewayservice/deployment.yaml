@@ -123,6 +123,16 @@ spec:
             periodSeconds: 15         # 每 15 秒檢查一次
             failureThreshold: 5       # 連續失敗 5 次（75 秒）才標記為 not ready
 
+          # livenessProbe：偵測 gatewayservice 假死（WebFlux 執行緒耗盡、OOM 後假死等），自動觸發重啟
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 90  # 比 readinessProbe 多 60s，避免啟動期誤殺
+            periodSeconds: 30        # 每 30 秒檢查一次
+            failureThreshold: 3      # 連續失敗 3 次（90 秒）才重啟
+            timeoutSeconds: 5
+
 ---
 
 # ============================================================

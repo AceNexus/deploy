@@ -127,6 +127,16 @@ spec:
             periodSeconds: 10
             failureThreshold: 5
 
+          # livenessProbe：偵測 Tempo 假死（WAL 寫入卡死、ingester 無回應等），自動觸發重啟
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 3200
+            initialDelaySeconds: 45  # 比 readinessProbe 多 30s，避免啟動期誤殺
+            periodSeconds: 30        # 每 30 秒檢查一次
+            failureThreshold: 3      # 連續失敗 3 次（90 秒）才重啟
+            timeoutSeconds: 5
+
       volumes:
         - name: tempo-config
           configMap:

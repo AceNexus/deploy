@@ -223,6 +223,17 @@ spec:
             periodSeconds: 15         # 每 15 秒檢查一次
             failureThreshold: 5       # 連續失敗 5 次（75 秒）才標記為 not ready
 
+          # livenessProbe：偵測 nexusbot 假死（JVM deadlock、排程器卡死、執行緒耗盡等），自動觸發重啟
+          # initialDelay 設為 120s，因 nexusbot 依賴最多（Config + Eureka + MySQL + RabbitMQ + LINE Bot）
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 5001
+            initialDelaySeconds: 120 # 比 readinessProbe 多 90s，確保所有依賴連線完成後才開始檢查
+            periodSeconds: 30        # 每 30 秒檢查一次
+            failureThreshold: 3      # 連續失敗 3 次（90 秒）才重啟
+            timeoutSeconds: 5
+
 ---
 
 # ============================================================

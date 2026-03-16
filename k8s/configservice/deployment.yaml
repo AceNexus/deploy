@@ -99,6 +99,16 @@ spec:
             failureThreshold: 5      # 連續失敗 5 次才標記為 not ready（50 秒容忍時間）
             timeoutSeconds: 10       # 單次檢查超過 10 秒視為失敗（預設 1 秒，rabbitmq-diagnostics 需要更長時間）
 
+          # livenessProbe：偵測 RabbitMQ 假死（deadlock、port 無回應等），自動觸發重啟
+          # 使用與 readinessProbe 相同的指令，但 initialDelay 必須大於 readinessProbe 避免啟動期誤殺
+          livenessProbe:
+            exec:
+              command: [ "rabbitmq-diagnostics", "check_port_connectivity" ]
+            initialDelaySeconds: 60  # 比 readinessProbe 多 40s，確保啟動期不誤殺
+            periodSeconds: 30        # 每 30 秒檢查一次（rabbitmq-diagnostics 指令較重，不需過頻）
+            failureThreshold: 3      # 連續失敗 3 次（90 秒）才重啟
+            timeoutSeconds: 10
+
       # 宣告這個 Pod 要使用哪些 Volume
       # volumeMounts 是「容器內掛在哪」，volumes 是「Volume 的來源是什麼」
       volumes:
@@ -232,6 +242,19 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 15
             failureThreshold: 5
+
+          # livenessProbe：偵測 configservice 假死（JVM deadlock、執行緒耗盡等），自動觸發重啟
+          # initialDelay 設為 90s，確保 RabbitMQ Bus 連線完成後才開始檢查，避免啟動期誤殺
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - wget -qO- "http://${SECURITY_USERNAME}:${SECURITY_PASSWORD}@localhost:8888/actuator/health" | grep -q '"status":"UP"'
+            initialDelaySeconds: 90  # 比 readinessProbe 多 60s，等待 RabbitMQ Bus 連線穩定
+            periodSeconds: 30        # 每 30 秒檢查一次
+            failureThreshold: 3      # 連續失敗 3 次（90 秒）才重啟
+            timeoutSeconds: 5
 
 ---
 

@@ -97,6 +97,16 @@ spec:
             periodSeconds: 10
             failureThreshold: 5
 
+          # livenessProbe：偵測 Grafana 假死（SQLite 鎖死、前端無回應等），自動觸發重啟
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 30  # 比 readinessProbe 多 20s，避免啟動期誤殺
+            periodSeconds: 30        # 每 30 秒檢查一次
+            failureThreshold: 3      # 連續失敗 3 次（90 秒）才重啟
+            timeoutSeconds: 5
+
       volumes:
         - name: grafana-datasources
           configMap:
