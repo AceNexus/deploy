@@ -12,9 +12,9 @@ echo.
 :: ── 步驟 1：configservice + rabbitmq ──────────────────────────
 echo [1/3] 重啟 configservice + rabbitmq...
 kubectl rollout restart deployment/configservice deployment/rabbitmq -n acenexus
-kubectl rollout status deployment/configservice -n acenexus --timeout=120s
-if %ERRORLEVEL% neq 0 goto :ERROR
 kubectl rollout status deployment/rabbitmq -n acenexus --timeout=120s
+if %ERRORLEVEL% neq 0 goto :ERROR
+kubectl rollout status deployment/configservice -n acenexus --timeout=120s
 if %ERRORLEVEL% neq 0 goto :ERROR
 echo [OK] configservice + rabbitmq 就緒。
 echo.
