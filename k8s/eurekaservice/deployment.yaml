@@ -38,11 +38,13 @@ spec:
       # preStop sleep 15s + Spring Boot graceful shutdown，需留足夠時間
       terminationGracePeriodSeconds: 40
 
+      imagePullSecrets:
+        - name: ghcr-secret
+
       containers:
         - name: eurekaservice
-          image: eurekaservice:local  # 本地 build 的 image
-          imagePullPolicy: Never      # Never = 只用本地 image，不去網路拉
-          # 若改成 IfNotPresent 且本地沒有，會嘗試去 Docker Hub 拉而失敗
+          image: ghcr.io/acenexus/eurekaservice:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8761
 

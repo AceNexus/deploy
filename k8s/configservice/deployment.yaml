@@ -177,10 +177,13 @@ spec:
 
       terminationGracePeriodSeconds: 40
 
+      imagePullSecrets:
+        - name: ghcr-secret
+
       containers:
         - name: configservice
-          image: configservice:local  # 本地 build 的 image（執行 build-images.bat 產生）
-          imagePullPolicy: Never      # Never = 只用本地 image，不去網路拉
+          image: ghcr.io/acenexus/configservice:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8888
 

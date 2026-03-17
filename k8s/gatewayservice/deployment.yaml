@@ -25,11 +25,10 @@ spec:
       labels:
         app: gatewayservice
     spec:
-      # initContainers：依序等待 configservice 和 eurekaservice 就緒後才啟動。
-      # gatewayservice 啟動時需要從 Config Server 拉取設定，並向 Eureka 註冊。
-      # 對應 docker-compose 的 depends_on: configservice + eurekaservice: condition: service_healthy
-      # gatewayservice 路由改為直接打 K8s Service DNS（http://nexusbot:5001），
-      # 不再依賴 Eureka，故移除 wait-for-eurekaservice initContainer
+      # initContainers：等待 configservice 就緒後才啟動。
+      # gatewayservice 啟動時需要從 Config Server 拉取設定。
+      # 路由直接打 K8s Service DNS（http://nexusbot:5001），不依賴 Eureka，
+      # 故只等待 configservice，不等待 eurekaservice。
       initContainers:
         - name: wait-for-configservice
           image: busybox:1.36
@@ -37,11 +36,13 @@ spec:
 
       terminationGracePeriodSeconds: 60
 
+      imagePullSecrets:
+        - name: ghcr-secret
+
       containers:
         - name: gatewayservice
-          image: gatewayservice:local  # 本地 build 的 image
-          imagePullPolicy: Never       # Never = 只用本地 image，不去網路拉
-          # 若改成 IfNotPresent 且本地沒有，會嘗試去 Docker Hub 拉而失敗
+          image: ghcr.io/acenexus/gatewayservice:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8080
 
