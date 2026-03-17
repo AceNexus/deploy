@@ -86,7 +86,7 @@ goto :UPDATE_BOT2
 echo [提示] 未設定 LINE_CHANNEL_ACCESS_TOKEN，跳過 Bot 1 Webhook 更新。
 
 :UPDATE_BOT2
-:: 更新 LINE Bot 2 Webhook（nexusbot-test :9999）
+:: 更新 LINE Bot 2 Webhook（test bot，同樣透過 gateway :8080 → /api/linebot-test/webhook）
 if "!LINE_TOKEN_TEST!"=="" goto :SKIP_LINE2
 if "!LINE_TOKEN_TEST!"=="your_test_bot_line_channel_access_token_here" goto :SKIP_LINE2
 
