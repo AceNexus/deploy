@@ -182,7 +182,7 @@ spec:
 
       containers:
         - name: configservice
-          image: ghcr.io/acenexus/configservice:latest
+          image: ghcr.io/acenexus/configservice:e1b4395d
           imagePullPolicy: Always
           ports:
             - containerPort: 8888
