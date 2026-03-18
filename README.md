@@ -1,6 +1,7 @@
 # AceNexus — K8s 部署 & CI/CD 指南
 
 本 repo 是 AceNexus 微服務平台的 **部署中心**，包含：
+
 - K8s YAML manifests（`k8s/`）
 - ArgoCD Application 設定（`argocd/`）
 - 本機操作腳本（`*.bat`）
@@ -40,10 +41,11 @@ ArgoCD → kubectl apply
     │
     ▼
 Kubernetes（namespace: acenexus）
-  nexusbot · configservice · eurekaservice · gatewayservice · rabbitmq
+  nexusbot · configservice · eurekaservice · gatewayservice · rabbitmq · aiclient
 ```
 
 **流量路徑：**
+
 ```
 LINE Webhook → ngrok → gatewayservice :8080 → nexusbot :5001
 ```
@@ -55,20 +57,22 @@ LINE Webhook → ngrok → gatewayservice :8080 → nexusbot :5001
 ### CI — 各服務 repo 各自負責
 
 每個服務 repo（nexusbot / configservice / eurekaservice / gatewayservice）都有：
+
 ```
 .github/workflows/ci.yml
 ```
 
 #### 觸發條件
 
-| 事件 | 執行內容 |
-|------|---------|
-| PR → main | test job（build + test），PR 通過才可合併 |
-| push to main | test job → release job（完整流程） |
+| 事件           | 執行內容                             |
+|--------------|----------------------------------|
+| PR → main    | test job（build + test），PR 通過才可合併 |
+| push to main | test job → release job（完整流程）     |
 
 #### 兩個 Job 的分工
 
 **Job 1：test**（PR + main 都執行）
+
 ```
 ① checkout source
 ② chmod +x gradlew
@@ -77,6 +81,7 @@ LINE Webhook → ngrok → gatewayservice :8080 → nexusbot :5001
 ```
 
 **Job 2：release**（僅 main，needs: test）
+
 ```
 ① checkout source + checkout deploy repo（DEPLOY_REPO_PAT）
 ② 計算 SHORT_SHA（git sha 前 8 碼）
@@ -93,6 +98,7 @@ LINE Webhook → ngrok → gatewayservice :8080 → nexusbot :5001
 ### CD — 本 repo（deploy）負責
 
 ArgoCD 監聽本 repo，每 3 分鐘輪詢：
+
 ```
 偵測到 k8s/<service>/deployment.yaml image tag 變動
     → kubectl apply
@@ -129,6 +135,7 @@ kubectl create namespace acenexus
 ### Step 2：建立 K8s Secrets
 
 **configservice-secret**
+
 ```bash
 kubectl create secret generic configservice-secret -n acenexus \
   --from-literal=security-username=<帳號> \
@@ -139,6 +146,7 @@ kubectl create secret generic configservice-secret -n acenexus \
 ```
 
 **eurekaservice-secret**
+
 ```bash
 kubectl create secret generic eurekaservice-secret -n acenexus \
   --from-literal=security-username=<帳號> \
@@ -150,6 +158,7 @@ kubectl create secret generic eurekaservice-secret -n acenexus \
 ```
 
 **gatewayservice-secret**
+
 ```bash
 kubectl create secret generic gatewayservice-secret -n acenexus \
   --from-literal=security-username=<帳號> \
@@ -162,6 +171,7 @@ kubectl create secret generic gatewayservice-secret -n acenexus \
 ```
 
 **nexusbot-secret**
+
 ```bash
 kubectl create secret generic nexusbot-secret -n acenexus \
   --from-literal=config-server-username=<configservice帳號> \
@@ -180,6 +190,7 @@ kubectl create secret generic nexusbot-secret -n acenexus \
 ```
 
 **ghcr-secret**（K8s 從 GHCR 拉取 private image 用）
+
 ```bash
 kubectl create secret docker-registry ghcr-secret \
   --docker-server=ghcr.io \
@@ -189,6 +200,7 @@ kubectl create secret docker-registry ghcr-secret \
 ```
 
 確認所有 Secret 已建立：
+
 ```bash
 kubectl get secret -n acenexus
 ```
@@ -196,6 +208,7 @@ kubectl get secret -n acenexus
 ### Step 3：初次套用 K8s YAML
 
 ```bash
+kubectl apply -f k8s/aiclient/deployment.yaml -n acenexus
 kubectl apply -f k8s/configservice/deployment.yaml -n acenexus
 kubectl apply -f k8s/eurekaservice/deployment.yaml -n acenexus
 kubectl apply -f k8s/gatewayservice/deployment.yaml -n acenexus
@@ -235,6 +248,7 @@ argocd repo add https://github.com/AceNexus/deploy.git \
 > 否則 K8s 會因 image 不存在（ImagePullBackOff）中斷現有服務。
 
 ```bash
+kubectl apply -f argocd/aiclient.yaml
 kubectl apply -f argocd/configservice.yaml
 kubectl apply -f argocd/eurekaservice.yaml
 kubectl apply -f argocd/gatewayservice.yaml
@@ -267,6 +281,7 @@ ngrok-tunnel.bat
 ```
 
 驗證整條鏈路：
+
 ```bash
 curl http://localhost:8080/actuator/health
 curl https://<ngrok-url>/api/linebot/actuator/health -H "ngrok-skip-browser-warning: true"
@@ -280,14 +295,14 @@ curl https://<ngrok-url>/api/linebot/actuator/health -H "ngrok-skip-browser-warn
 ### 啟動所有服務
 
 ```bash
-kubectl scale deployment configservice eurekaservice gatewayservice nexusbot rabbitmq \
+kubectl scale deployment aiclient configservice eurekaservice gatewayservice nexusbot rabbitmq \
   --replicas=1 -n acenexus
 ```
 
 ### 停止所有服務
 
 ```bash
-kubectl scale deployment configservice eurekaservice gatewayservice nexusbot rabbitmq \
+kubectl scale deployment aiclient configservice eurekaservice gatewayservice nexusbot rabbitmq \
   --replicas=0 -n acenexus
 ```
 
@@ -349,11 +364,11 @@ kubectl rollout restart deployment/<service> -n acenexus
 
 ## 回滾
 
-| 情境 | 操作 |
-|------|------|
+| 情境           | 操作                                                |
+|--------------|---------------------------------------------------|
 | 新版本有問題，回到上一版 | `git revert` deploy repo 的 Bot commit，ArgoCD 自動同步 |
-| 回到任意歷史版本 | ArgoCD UI → 選服務 → History → Rollback |
-| CI build 失敗 | 不需操作，cluster 維持現有版本 |
+| 回到任意歷史版本     | ArgoCD UI → 選服務 → History → Rollback              |
+| CI build 失敗  | 不需操作，cluster 維持現有版本                               |
 
 ```bash
 # 或直接在 deploy repo 還原 image tag
@@ -387,13 +402,44 @@ kubectl describe pod -n acenexus -l app=<service>       # 啟動失敗事件
 kubectl exec -it -n acenexus deployment/<service> -- sh # 進入容器
 ```
 
+### AIClient Web UI（AI 模型與帳號設定）
+
+AIClient Service 為 LoadBalancer，直接從瀏覽器存取：
+
+```
+http://localhost:3100   （預設密碼：admin123）
+```
+
+在 Web UI 可設定：AI 提供商帳號、模型對應、failover 優先順序、帳號池。
+設定存入 PVC（`aiclient-config-pvc`，1Gi），Pod 重啟後不遺失。
+
+### MySQL（獨立安裝，不在 K8s 內）
+
+MySQL 獨立安裝在 host 上，nexusbot 透過 `host.docker.internal:3306` 連線。
+
+```bash
+# Ubuntu 安裝
+sudo apt install mysql-server
+sudo systemctl enable mysql
+
+# 建立資料庫與帳號
+mysql -u root -p
+CREATE DATABASE nexusbot CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER '<帳號>'@'%' IDENTIFIED BY '<密碼>';
+GRANT ALL PRIVILEGES ON nexusbot.* TO '<帳號>'@'%';
+FLUSH PRIVILEGES;
+```
+
+> Ubuntu 上 `host.docker.internal` 不可用，需將 `k8s/nexusbot/deployment.yaml` 的
+> `MYSQL_HOST` 改為 Ubuntu host IP（通常為 `172.17.0.1` 或實際網卡 IP）。
+
 ### Port Forward（存取內部服務）
 
 ```bash
 kubectl port-forward svc/configservice  8888:8888 -n acenexus
 kubectl port-forward svc/eurekaservice  8761:8761 -n acenexus
 kubectl port-forward svc/rabbitmq      15672:15672 -n acenexus
-kubectl port-forward svc/argocd-server  8090:443  -n argocd
+kubectl port-forward svc/argocd-server  8090:443   -n argocd
 ```
 
 ### ArgoCD UI

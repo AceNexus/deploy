@@ -79,7 +79,7 @@ spec:
 
             # MySQL（本機 K8s 透過 host.docker.internal 連到宿主機的 MySQL）
             - name: MYSQL_HOST
-              value: "host.docker.internal"
+              value: "host.docker.internal"  # Docker Desktop；Ubuntu 改為 host IP
             - name: MYSQL_PORT
               value: "3306"
             - name: MYSQL_DATABASE
@@ -190,7 +190,7 @@ spec:
 
             # Gemini Proxy（AIClient-2-API，選填）
             - name: GEMINI_PROXY_URL
-              value: "http://host.docker.internal:3100/v1"  # 本機 AIClient 透過 host.docker.internal 存取
+              value: "http://aiclient:3100/v1"
             - name: GEMINI_PROXY_API_KEY
               valueFrom:
                 secretKeyRef:

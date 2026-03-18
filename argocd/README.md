@@ -62,6 +62,7 @@ kubectl create secret docker-registry ghcr-secret \
 ## 套用 ArgoCD Application
 
 ```bash
+kubectl apply -f argocd/aiclient.yaml
 kubectl apply -f argocd/configservice.yaml
 kubectl apply -f argocd/eurekaservice.yaml
 kubectl apply -f argocd/gatewayservice.yaml

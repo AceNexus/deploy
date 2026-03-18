@@ -1,0 +1,105 @@
+# ============================================================
+# 此檔案包含 3 個 K8s 物件，用 --- 分隔：
+#   1. PersistentVolumeClaim → AIClient 設定持久化（1Gi，Pod 重啟後設定不遺失）
+#   2. Deployment            → AIClient-2-API 容器
+#   3. Service               → AIClient 網路入口（LoadBalancer，對外開放 Web UI）
+# ============================================================
+# AIClient-2-API：OpenAI 相容 API Proxy，內部轉發至 Gemini、Claude、Qwen 等
+# 公開 image：justlikemaki/aiclient-2-api
+# Web UI：http://localhost:3100（預設密碼：admin123）
+
+# ============================================================
+# [1/3] PersistentVolumeClaim - AIClient 設定持久化
+# ============================================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: aiclient-config-pvc
+  namespace: acenexus
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+
+# ============================================================
+# [2/3] Deployment - AIClient-2-API 容器
+# ============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aiclient
+  namespace: acenexus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aiclient
+  template:
+    metadata:
+      labels:
+        app: aiclient
+    spec:
+      containers:
+        - name: aiclient
+          image: justlikemaki/aiclient-2-api
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000   # 容器內部 port
+
+          volumeMounts:
+            - name: aiclient-config
+              mountPath: /app/configs
+
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 100m
+            limits:
+              memory: 256Mi
+              cpu: 500m
+
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 5
+
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+
+      volumes:
+        - name: aiclient-config
+          persistentVolumeClaim:
+            claimName: aiclient-config-pvc
+
+---
+
+# ============================================================
+# [3/3] Service - AIClient 網路入口
+# ============================================================
+# nexusbot 透過 GEMINI_PROXY_URL=http://aiclient:3100/v1 連到這裡（cluster 內部）
+# LoadBalancer：Docker Desktop → localhost:3100；Ubuntu/k3s → 機器 IP:3100
+# Service port 3100 → containerPort 3000（維持與原 Docker 設定一致的 port 號）
+apiVersion: v1
+kind: Service
+metadata:
+  name: aiclient
+  namespace: acenexus
+spec:
+  selector:
+    app: aiclient
+  ports:
+    - port: 3100
+      targetPort: 3000
+  type: LoadBalancer
