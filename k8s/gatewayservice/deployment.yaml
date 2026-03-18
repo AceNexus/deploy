@@ -42,7 +42,7 @@ spec:
 
       containers:
         - name: gatewayservice
-          image: ghcr.io/acenexus/gatewayservice:855eca72
+          image: ghcr.io/acenexus/gatewayservice:9def98cc
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
