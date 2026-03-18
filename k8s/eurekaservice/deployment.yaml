@@ -43,7 +43,7 @@ spec:
 
       containers:
         - name: eurekaservice
-          image: ghcr.io/acenexus/eurekaservice:latest
+          image: ghcr.io/acenexus/eurekaservice:0fa66e0c
           imagePullPolicy: Always
           ports:
             - containerPort: 8761
