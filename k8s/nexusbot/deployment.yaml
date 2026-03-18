@@ -47,7 +47,7 @@ spec:
 
       containers:
         - name: nexusbot
-          image: ghcr.io/acenexus/nexusbot:latest
+          image: ghcr.io/acenexus/nexusbot:2839b666
           imagePullPolicy: Always
           ports:
             - containerPort: 5001
