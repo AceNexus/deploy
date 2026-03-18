@@ -191,6 +191,9 @@ kubectl create secret generic nexusbot-secret -n acenexus \
 
 **ghcr-secret**（K8s 從 GHCR 拉取 private image 用）
 
+> 注意：此 Secret 必須在 Step 6 套用 ArgoCD Application **之前**建立，
+> 否則 ArgoCD 觸發 rolling update 時新 Pod 會 ImagePullBackOff。
+
 ```bash
 kubectl create secret docker-registry ghcr-secret \
   --docker-server=ghcr.io \
@@ -251,7 +254,7 @@ kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.pas
 
 ### Step 6：套用 ArgoCD Application
 
-> ⚠️ 須在首次 CI 執行成功（GHCR 已有 image）後才執行，
+> 注意：須在首次 CI 執行成功（GHCR 已有 image）後才執行，
 > 否則 K8s 會因 image 不存在（ImagePullBackOff）中斷現有服務。
 
 ```bash
