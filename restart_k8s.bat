@@ -40,6 +40,14 @@ echo.
 echo ========================================
 echo   全部重啟完成！
 echo ========================================
+echo.
+
+:: ── ArgoCD UI Port-Forward ─────────────────────────────────
+echo 啟動 ArgoCD UI port-forward（新視窗）...
+start "ArgoCD UI" kubectl port-forward svc/argocd-server 9090:443 -n argocd
+echo ArgoCD UI：https://localhost:9090（帳號：admin）
+echo.
+
 goto :EXIT
 
 :ERROR

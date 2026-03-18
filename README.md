@@ -228,16 +228,23 @@ kubectl get pods -n argocd -w   # 等待全部 Running
 ### Step 5：設定 ArgoCD 存取 deploy repo
 
 ```bash
-# 開啟 ArgoCD UI
-kubectl port-forward svc/argocd-server 8090:443 -n argocd
+# 下載 argocd CLI（Windows，在 Git Bash 執行）
+curl -sL https://github.com/argoproj/argo-cd/releases/latest/download/argocd-windows-amd64.exe -o /tmp/argocd.exe
 
-# 取得初始密碼
-kubectl get secret argocd-initial-admin-secret -n argocd \
-  -o jsonpath="{.data.password}" | base64 -d
+# 開啟 ArgoCD UI（另開一個終端機保持 port-forward 運行）
+kubectl port-forward svc/argocd-server 9090:443 -n argocd
+```
 
-# 登入並設定 deploy repo
-argocd login localhost:8090 --insecure --username admin --password <初始密碼>
-argocd repo add https://github.com/AceNexus/deploy.git \
+取得初始密碼（PowerShell）：
+
+```powershell
+kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" | ForEach-Object { [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($_)) }
+```
+
+```bash
+# 登入並設定 deploy repo（Git Bash）
+/tmp/argocd.exe login localhost:9090 --insecure --username admin --password <初始密碼>
+/tmp/argocd.exe repo add https://github.com/AceNexus/deploy.git \
   --username <GitHub帳號> \
   --password <GitHub PAT>
 ```
@@ -444,9 +451,14 @@ kubectl port-forward svc/argocd-server  8090:443   -n argocd
 
 ### ArgoCD UI
 
+```bat
+argocd-ui.bat
+```
+
+或手動執行：
 ```bash
-kubectl port-forward svc/argocd-server 8090:443 -n argocd
-# 瀏覽器：https://localhost:8090（帳號：admin）
+kubectl port-forward svc/argocd-server 9090:443 -n argocd
+# 瀏覽器：https://localhost:9090（帳號：admin）
 ```
 
 ### 可選：觀測性服務
