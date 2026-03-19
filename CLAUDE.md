@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This repo contains **K8s deployment manifests, ArgoCD Application definitions, and automation scripts** for the AceNexus microservices platform. There is no application source code here — all service source lives in sibling directories (`../configservice`, `../eurekaservice`, `../gatewayservice`, `../nexusbot`).
 
-**K8s namespace**: `acenexus` (Docker Desktop Kubernetes, single-node)
+**K8s namespace**: `acenexus` (Docker Desktop Kubernetes or Ubuntu k3s, single-node)
 
 ## Directory Structure
 
@@ -21,9 +21,10 @@ k8s/                    # Kubernetes YAML manifests (one subdir per service)
   tempo/                # Tempo tracing backend Deployment + Service
 argocd/                 # ArgoCD Application CRDs (one per service) + README
 deploy_ngrok/           # docker-compose.yml + .env.example + update_webhook.ps1
-ngrok-tunnel.bat        # Start ngrok, update nexusbot NEXUSBOT_BASE_URL in K8s, update LINE webhooks
-restart_k8s.bat         # Ordered restart: rabbitmq+config → eureka → gateway+nexusbot (waits for readiness)
-argocd-ui.bat           # port-forward argocd-server to localhost:9090, open https://localhost:9090
+ngrok-tunnel.bat        # (Windows) Start ngrok, update NEXUSBOT_BASE_URL in K8s, update LINE webhooks
+ngrok-tunnel.sh         # (Linux)   同上
+restart_k8s.bat         # (Windows) Ordered restart: rabbitmq+config → eureka → gateway+nexusbot
+restart_k8s.sh          # (Linux)   同上
 ```
 
 ## CD Flow (GitOps)
@@ -63,7 +64,10 @@ kubectl scale deployment aiclient configservice eurekaservice gatewayservice nex
 ### Ordered restart
 
 ```bat
+# Windows
 restart_k8s.bat
+# Linux
+bash restart_k8s.sh
 # Sequence: rabbitmq+configservice → eurekaservice → gatewayservice+nexusbot
 ```
 
@@ -84,7 +88,10 @@ kubectl exec -n acenexus deployment/configservice -- \
 ### ngrok + LINE webhook
 
 ```bash
+# Windows
 ngrok-tunnel.bat
+# Linux（依賴：docker compose、curl、jq）
+bash ngrok-tunnel.sh
 # → starts ngrok container, fetches public URL, sets NEXUSBOT_BASE_URL in K8s, updates LINE webhook
 # ERR_NGROK_108 = too many tunnels → visit https://dashboard.ngrok.com/agents to kill old sessions
 ```
@@ -101,14 +108,27 @@ kubectl set env deployment/nexusbot TRACING_SAMPLING_PROBABILITY=1.0 -n acenexus
 
 ### Service networking in K8s
 
-- **LoadBalancer** (Docker Desktop → localhost): `gatewayservice:8080`, `nexusbot:5001`, `aiclient:3100`
+- **LoadBalancer**:
+  - Docker Desktop → 自動對應至 `localhost`
+  - Ubuntu k3s → 內建 ServiceLB，自動對應至 node IP（`kubectl get nodes -o wide` 查看）
+  - 服務：`gatewayservice:8080`, `nexusbot:5001`, `aiclient:3100`
 - **ClusterIP** (internal only, use port-forward): `configservice:8888`, `eurekaservice:8761`, `rabbitmq:5672/15672`
 - Services communicate by K8s Service DNS name. Gateway routes to nexusbot by DNS, not Eureka.
 
 ### MySQL
 
-MySQL runs on the **host machine** (not in K8s). nexusbot connects via `host.docker.internal:3306`.
-On Ubuntu, `host.docker.internal` is unavailable — change `MYSQL_HOST` in `k8s/nexusbot/deployment.yaml` to the host IP.
+MySQL runs on the **host machine** (not in K8s).
+
+| 環境 | `MYSQL_HOST` 設定 |
+|------|-----------------|
+| Docker Desktop | `host.docker.internal`（預設值，自動解析） |
+| Ubuntu k3s | 宿主機實際 IP（`kubectl get nodes -o wide` → INTERNAL-IP） |
+
+Ubuntu k3s 上線後更新方式：
+```bash
+HOST_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+kubectl set env deployment/nexusbot MYSQL_HOST="$HOST_IP" -n acenexus
+```
 
 ### AIClient-2-API
 
