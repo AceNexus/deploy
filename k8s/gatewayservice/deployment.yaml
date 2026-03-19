@@ -37,13 +37,10 @@ spec:
 
       terminationGracePeriodSeconds: 60
 
-      imagePullSecrets:
-        - name: ghcr-secret
-
       containers:
         - name: gatewayservice
-          image: ghcr.io/acenexus/gatewayservice:9def98cc
-          imagePullPolicy: Always
+          image: gatewayservice:local
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
 

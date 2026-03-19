@@ -38,13 +38,10 @@ spec:
       # preStop sleep 15s + Spring Boot graceful shutdown，需留足夠時間
       terminationGracePeriodSeconds: 40
 
-      imagePullSecrets:
-        - name: ghcr-secret
-
       containers:
         - name: eurekaservice
-          image: ghcr.io/acenexus/eurekaservice:0fa66e0c
-          imagePullPolicy: Always
+          image: eurekaservice:local
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8761
 

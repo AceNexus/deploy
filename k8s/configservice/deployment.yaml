@@ -177,13 +177,10 @@ spec:
 
       terminationGracePeriodSeconds: 40
 
-      imagePullSecrets:
-        - name: ghcr-secret
-
       containers:
         - name: configservice
-          image: ghcr.io/acenexus/configservice:88f56c8d
-          imagePullPolicy: Always
+          image: configservice:local
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8888
 

@@ -42,13 +42,10 @@ spec:
       # JVM 啟動慢，給足 graceful shutdown 時間（preStop 5s + Spring shutdown）
       terminationGracePeriodSeconds: 60
 
-      imagePullSecrets:
-        - name: ghcr-secret
-
       containers:
         - name: nexusbot
-          image: ghcr.io/acenexus/nexusbot:2839b666
-          imagePullPolicy: Always
+          image: nexusbot:local
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 5001
 
@@ -77,9 +74,13 @@ spec:
                   name: nexusbot-secret
                   key: config-server-password
 
-            # MySQL（本機 K8s 透過 host.docker.internal 連到宿主機的 MySQL）
+            # MySQL（宿主機上的獨立 MySQL，不在 K8s 內）
+            # Docker Desktop：host.docker.internal 自動解析為宿主機 IP
+            # Ubuntu k3s：host.docker.internal 不可用，需改為宿主機實際 IP
+            #   取得方式：kubectl get nodes -o wide（INTERNAL-IP 欄位）
+            #   更新方式：kubectl set env deployment/nexusbot MYSQL_HOST=<host-ip> -n acenexus
             - name: MYSQL_HOST
-              value: "host.docker.internal"  # Docker Desktop；Ubuntu 改為 host IP
+              value: "host.docker.internal"  # Ubuntu k3s 需改為實際 host IP
             - name: MYSQL_PORT
               value: "3306"
             - name: MYSQL_DATABASE
