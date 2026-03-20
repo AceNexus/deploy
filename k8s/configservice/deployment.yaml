@@ -94,20 +94,20 @@ spec:
           readinessProbe:
             exec:
               command: [ "rabbitmq-diagnostics", "check_port_connectivity" ]
-            initialDelaySeconds: 20  # 容器啟動後等 20 秒再開始第一次檢查（預留啟動時間）
+            initialDelaySeconds: 30  # 容器啟動後等 30 秒再開始第一次檢查（預留啟動時間）
             periodSeconds: 10        # 之後每 10 秒檢查一次
-            failureThreshold: 5      # 連續失敗 5 次才標記為 not ready（50 秒容忍時間）
-            timeoutSeconds: 10       # 單次檢查超過 10 秒視為失敗（預設 1 秒，rabbitmq-diagnostics 需要更長時間）
+            failureThreshold: 6      # 連續失敗 6 次才標記為 not ready（60 秒容忍時間）
+            timeoutSeconds: 20       # 改為 20s，rabbitmq-diagnostics 啟動期間執行較慢
 
           # livenessProbe：偵測 RabbitMQ 假死（deadlock、port 無回應等），自動觸發重啟
-          # 使用與 readinessProbe 相同的指令，但 initialDelay 必須大於 readinessProbe 避免啟動期誤殺
+          # initialDelay 必須大於 readinessProbe 避免啟動期誤殺
           livenessProbe:
             exec:
-              command: [ "rabbitmq-diagnostics", "check_port_connectivity" ]
-            initialDelaySeconds: 60  # 比 readinessProbe 多 40s，確保啟動期不誤殺
-            periodSeconds: 30        # 每 30 秒檢查一次（rabbitmq-diagnostics 指令較重，不需過頻）
+              command: [ "sh", "-c", "nc -z localhost 5672" ]  # 輕量 TCP 檢查，不用 rabbitmq-diagnostics
+            initialDelaySeconds: 60  # 比 readinessProbe 多 30s，確保啟動期不誤殺
+            periodSeconds: 30        # 每 30 秒檢查一次
             failureThreshold: 3      # 連續失敗 3 次（90 秒）才重啟
-            timeoutSeconds: 10
+            timeoutSeconds: 5
 
       # 宣告這個 Pod 要使用哪些 Volume
       # volumeMounts 是「容器內掛在哪」，volumes 是「Volume 的來源是什麼」
