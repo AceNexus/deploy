@@ -199,7 +199,7 @@ spec:
                   key: gemini-proxy-api-key
 
             - name: TRACING_SAMPLING_PROBABILITY
-              value: "0.0" # 改成 1.0 可開啟完整追蹤
+              value: "1.0" # 1.0 = 100% 採樣（開發/demo 用）；production 建議改為 0.1
             - name: MANAGEMENT_OTLP_TRACING_ENDPOINT
               value: "http://tempo:4318/v1/traces"  # 送至 K8s 內的 Tempo Service
 
