@@ -1,0 +1,66 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: acenexus-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: nexusbot
+      TZ: Asia/Taipei
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - mysql-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-ppassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: acenexus-phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      TZ: Asia/Taipei
+    ports:
+      - "8081:80"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - mysql-net
+
+  mysql-backup:
+    image: fradelg/mysql-cron-backup
+    container_name: acenexus-mysql-backup
+    restart: unless-stopped
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: root
+      MYSQL_PASS: password
+      MYSQL_DB: nexusbot
+      MAX_BACKUPS: 30        # 保留最近 30 天
+      INIT_BACKUP: 1         # 啟動時立即備份一次
+      CRON_TIME: "0 2 * * *" # 每天凌晨 02:00
+      TZ: Asia/Taipei
+    volumes:
+      - ./mysql_backup:/backup
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - mysql-net
+
+volumes:
+  mysql-data:
+    name: acenexus-mysql-data
+
+networks:
+  mysql-net:
+    name: acenexus-mysql-net
