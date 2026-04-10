@@ -43,6 +43,20 @@ spec:
       labels:
         app: aiclient
     spec:
+      initContainers:
+        - name: fix-powershell
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              printf '#!/bin/sh\nexit 0\n' > /fake-ps/powershell.exe
+              chmod +x /fake-ps/powershell.exe
+          volumeMounts:
+            - name: fake-powershell
+              mountPath: /fake-ps
+
       containers:
         - name: aiclient
           image: justlikemaki/aiclient-2-api
@@ -50,9 +64,20 @@ spec:
           ports:
             - containerPort: 3000   # 容器內部 port
 
+          env:
+            - name: DISABLE_OPEN_BROWSER
+              value: "true"
+            - name: OPEN_BROWSER
+              value: "false"
+
           volumeMounts:
             - name: aiclient-config
               mountPath: /app/configs
+            - name: fake-powershell
+              mountPath: /mnt/c/Windows/System32/WindowsPowerShell/v1.0
+            - name: api-server-patch
+              mountPath: /app/src/services/api-server.js
+              subPath: api-server.js
 
           resources:
             requests:
@@ -82,6 +107,11 @@ spec:
         - name: aiclient-config
           persistentVolumeClaim:
             claimName: aiclient-config-pvc
+        - name: fake-powershell
+          emptyDir: {}
+        - name: api-server-patch
+          configMap:
+            name: aiclient-api-server-patch
 
 ---
 

@@ -24,6 +24,9 @@ echo.
 echo   aiclient         AI Proxy - Gemini/Claude/Qwen (default pw: admin123)
 echo     http://localhost:3100
 echo.
+echo   phpmyadmin       MySQL Web UI (user: root / pw: password)
+echo     http://localhost:8081
+echo.
 echo   grafana          Observability dashboard + Tempo tracing backend
 echo     http://localhost:3000  (view distributed traces here)
 echo     Tempo: API only - no UI, view traces via Grafana above
