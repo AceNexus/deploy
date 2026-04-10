@@ -4,6 +4,10 @@ setlocal
 if not "%~1"=="" goto watch_mode
 
 :: ---------- Main mode -------------------------------------------------------
+:: Fetch ArgoCD password dynamically
+set "ARGOPW=password"
+for /f "usebackq tokens=*" %%i in (`powershell -Command "kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.password}' | ForEach-Object { [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($_)) }" 2^>nul`) do set "ARGOPW=%%i"
+
 echo ========================================
 echo   AceNexus Services
 echo ========================================
@@ -31,7 +35,7 @@ echo   grafana          Observability dashboard + Tempo tracing backend
 echo     http://localhost:3000  (view distributed traces here)
 echo     Tempo: API only - no UI, view traces via Grafana above
 echo.
-echo   argocd           GitOps CD platform (user: admin / pw: password)
+echo   argocd           GitOps CD platform (user: admin / pw: %ARGOPW%)
 echo     https://localhost:9090
 echo.
 echo   ngrok            HTTPS tunnel to LINE webhook
