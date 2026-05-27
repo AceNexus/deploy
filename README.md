@@ -29,7 +29,7 @@
     │
     ▼
 GitHub Actions CI（各服務 repo）
-    │  build → test → Trivy scan → push image
+    │  build → test → push image
     ▼
 GHCR（ghcr.io/acenexus/<service>:<sha>）
     │  更新 deploy repo image tag
@@ -87,10 +87,9 @@ LINE Webhook → ngrok → gatewayservice :8080 → nexusbot :5001
 ② 計算 SHORT_SHA（git sha 前 8 碼）
 ③ ./gradlew bootJar  ← 只打包 JAR，不重跑測試
 ④ docker build -t ghcr.io/acenexus/<service>:<sha> .
-⑤ Trivy 掃描         ← HIGH/CRITICAL 漏洞中止，不 push
-⑥ docker push ghcr.io/acenexus/<service>:<sha>
+⑤ docker push ghcr.io/acenexus/<service>:<sha>
    docker push ghcr.io/acenexus/<service>:latest
-⑦ sed 更新 deploy repo k8s/<service>/deployment.yaml image tag
+⑥ sed 更新 deploy repo k8s/<service>/deployment.yaml image tag
    git commit "[skip ci] update <service> to <sha>"
    git push → AceNexus/deploy
 ```
@@ -110,7 +109,6 @@ ArgoCD 監聽本 repo，每 3 分鐘輪詢：
 
 ```
 gradle build 失敗   → release job 不啟動，cluster 不動
-Trivy 掃描失敗      → image 不 push，deploy repo 不更新
 deploy repo 不更新  → ArgoCD 不動，cluster 維持現有版本
 ```
 
