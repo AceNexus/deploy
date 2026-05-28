@@ -191,6 +191,26 @@ kubectl create secret generic nexusbot-secret -n acenexus \
 
 > 注意：此 Secret 必須在 Step 6 套用 ArgoCD Application **之前**建立，
 > 否則 ArgoCD 觸發 rolling update 時新 Pod 會 ImagePullBackOff。
+>
+> 若 GHCR packages 已設為 **Public**，可跳過此步驟。
+
+#### 建立 GitHub PAT（`read:packages` 權限）
+
+```
+GitHub → 右上角頭像 → Settings
+→ 左側最底部 Developer settings
+→ Personal access tokens → Tokens (classic)
+→ Generate new token (classic)
+
+填寫：
+  Note：ghcr-read（或任意名稱）
+  Expiration：No expiration（避免過期導致部署中斷）
+  Scopes：勾選 read:packages
+
+按 Generate token，複製 ghp_... token（只顯示一次）
+```
+
+#### 建立 K8s Secret
 
 ```bash
 kubectl create secret docker-registry ghcr-secret \
@@ -198,6 +218,23 @@ kubectl create secret docker-registry ghcr-secret \
   --docker-username=<GitHub帳號> \
   --docker-password=<GitHub PAT> \
   -n acenexus
+```
+
+#### 更新 PAT（PAT 過期或需要換新時）
+
+```bash
+# 刪除舊的
+kubectl delete secret ghcr-secret -n acenexus
+
+# 用新 PAT 重新建立
+kubectl create secret docker-registry ghcr-secret \
+  --docker-server=ghcr.io \
+  --docker-username=<GitHub帳號> \
+  --docker-password=<新的GitHub PAT> \
+  -n acenexus
+
+# 刪除失敗的 Pod，讓它用新 secret 重試
+kubectl delete pod -n acenexus -l app=<service> --field-selector=status.phase!=Running
 ```
 
 確認所有 Secret 已建立：
@@ -439,12 +476,19 @@ kubectl get application -n argocd
 
 ### 新 Pod 卡在 ImagePullBackOff
 
-**原因**：`ghcr-secret` 不存在或 PAT 已失效，K8s 無法從 GHCR 拉取 image。
+**確認症狀**：
 
 ```bash
-# 確認症狀
-kubectl describe pod -n acenexus -l app=<service> | grep -A5 "Failed\|Error"
+kubectl describe pod -n acenexus -l app=<service> | grep -A3 "Warning\|Failed"
+```
 
+---
+
+#### 情境 A：`ghcr-secret` 不存在或 PAT 失效
+
+錯誤訊息包含 `unauthorized` 或 `403 Forbidden`（來自 `https://ghcr.io`）。
+
+```bash
 # 刪除舊的（若存在）
 kubectl delete secret ghcr-secret -n acenexus
 
@@ -455,11 +499,50 @@ kubectl create secret docker-registry ghcr-secret \
   --docker-password=<GitHub PAT> \
   -n acenexus
 
-# 建立後 Pod 會自動重試，觀察狀態
+# 刪除失敗的 Pod，讓它用新 secret 重試
+kubectl delete pod -n acenexus -l app=<service> --field-selector=status.phase!=Running
+
+# 觀察狀態
 kubectl get pods -n acenexus -w
 ```
 
-> PAT 建立位置：GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)，勾選 `read:packages`。
+> **PAT 建立位置**：GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)，勾選 `read:packages`。
+
+---
+
+#### 情境 B：Docker Desktop registry mirror 攔截（403 來自 `registry-mirror:1273`）
+
+Docker Desktop K8s 內建 registry mirror，會攔截所有 registry pull（包含 GHCR）。
+錯誤訊息包含 `registry-mirror:1273`。
+
+**修法**：在 node 上為 `ghcr.io` 建立直連設定，繞過 mirror：
+
+```bash
+kubectl run -it --rm node-fix --image=busybox --restart=Never \
+  --overrides='{
+    "spec": {
+      "hostPID": true,
+      "hostNetwork": true,
+      "nodeSelector": {"kubernetes.io/hostname": "desktop-control-plane"},
+      "containers": [{
+        "name": "node-fix",
+        "image": "busybox",
+        "command": ["sh", "-c",
+          "mkdir -p /proc/1/root/etc/containerd/certs.d/ghcr.io && cat > /proc/1/root/etc/containerd/certs.d/ghcr.io/hosts.toml << EOF\nserver = \"https://ghcr.io\"\n\n[host.\"https://ghcr.io\"]\n  capabilities = [\"pull\", \"resolve\", \"push\"]\nEOF\necho done"],
+        "securityContext": {"privileged": true}
+      }]
+    }
+  }' -- sh
+```
+
+> **注意**：此設定在 Docker Desktop 重啟後會消失，需重新執行。
+
+套用後刪除失敗的 Pod 讓它重試：
+
+```bash
+kubectl delete pod -n acenexus -l app=<service> --field-selector=status.phase!=Running
+kubectl get pods -n acenexus -w
+```
 
 ### AIClient Web UI（AI 模型與帳號設定）
 
