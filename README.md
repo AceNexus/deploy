@@ -447,7 +447,7 @@ FLUSH PRIVILEGES;
 kubectl port-forward svc/configservice  8888:8888 -n acenexus
 kubectl port-forward svc/eurekaservice  8761:8761 -n acenexus
 kubectl port-forward svc/rabbitmq      15672:15672 -n acenexus
-kubectl port-forward svc/argocd-server  8090:443   -n argocd
+kubectl port-forward svc/argocd-server  9090:443   -n argocd
 ```
 
 ### ArgoCD UI

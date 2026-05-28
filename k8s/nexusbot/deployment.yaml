@@ -28,6 +28,9 @@ spec:
       # initContainers：依序等待 configservice、eurekaservice、gatewayservice 就緒後才啟動。
       # nexusbot 啟動時需要從 Config Server 拉取設定，並向 Eureka 註冊，再透過 Gateway 對外提供服務。
       # 對應 docker-compose 的 depends_on: configservice + eurekaservice + gatewayservice: condition: service_healthy
+      imagePullSecrets:
+        - name: ghcr-secret
+
       initContainers:
         - name: wait-for-configservice
           image: busybox:1.36
@@ -44,8 +47,8 @@ spec:
 
       containers:
         - name: nexusbot
-          image: nexusbot:local
-          imagePullPolicy: IfNotPresent
+          image: ghcr.io/acenexus/nexusbot:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 5001
 

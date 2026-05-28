@@ -28,6 +28,9 @@ spec:
       # initContainers：等待 configservice 準備好後才啟動。
       # eurekaservice 啟動時會向 Config Server 拉取設定，Config Server 未就緒會導致啟動失敗。
       # 對應 docker-compose 的 depends_on: configservice: condition: service_healthy
+      imagePullSecrets:
+        - name: ghcr-secret
+
       initContainers:
         - name: wait-for-configservice
           image: busybox:1.36  # 輕量工具箱 image，只用來跑簡單的 shell 指令
@@ -40,8 +43,8 @@ spec:
 
       containers:
         - name: eurekaservice
-          image: eurekaservice:local
-          imagePullPolicy: IfNotPresent
+          image: ghcr.io/acenexus/eurekaservice:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8761
 

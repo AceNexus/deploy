@@ -168,6 +168,9 @@ spec:
       # initContainers：在主容器啟動前先執行的容器，執行完才繼續。
       # 作用：等待 RabbitMQ 準備好，避免 configservice 啟動時連不到 RabbitMQ 而失敗。
       # 對應 docker-compose 的 depends_on: rabbitmq: condition: service_healthy
+      imagePullSecrets:
+        - name: ghcr-secret
+
       initContainers:
         - name: wait-for-rabbitmq
           image: busybox:1.36  # 輕量工具箱 image，只用來跑簡單的 shell 指令
@@ -179,8 +182,8 @@ spec:
 
       containers:
         - name: configservice
-          image: configservice:local
-          imagePullPolicy: IfNotPresent
+          image: ghcr.io/acenexus/configservice:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8888
 
