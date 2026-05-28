@@ -410,6 +410,57 @@ kubectl describe pod -n acenexus -l app=<service>       # 啟動失敗事件
 kubectl exec -it -n acenexus deployment/<service> -- sh # 進入容器
 ```
 
+---
+
+## 常見問題排除
+
+### ArgoCD 所有 Application 顯示 Unknown
+
+**原因**：`argocd-repo-server` 掛掉後留下 Unknown 狀態，即使 repo-server 恢復，ArgoCD 也不會自動 sync。
+
+```bash
+# 1. 確認 repo-server 是否正常
+kubectl get pods -n argocd
+
+# 2. 若 repo-server 不是 Running，重啟它
+kubectl rollout restart deployment/argocd-repo-server -n argocd
+kubectl rollout status deployment/argocd-repo-server -n argocd --timeout=60s
+
+# 3. 強制 hard refresh，解除 Unknown 狀態
+for app in nexusbot configservice eurekaservice gatewayservice aiclient; do
+  kubectl annotate application $app -n argocd argocd.argoproj.io/refresh=hard --overwrite
+done
+
+# 4. 確認恢復正常
+kubectl get application -n argocd
+```
+
+---
+
+### 新 Pod 卡在 ImagePullBackOff
+
+**原因**：`ghcr-secret` 不存在或 PAT 已失效，K8s 無法從 GHCR 拉取 image。
+
+```bash
+# 確認症狀
+kubectl describe pod -n acenexus -l app=<service> | grep -A5 "Failed\|Error"
+
+# 刪除舊的（若存在）
+kubectl delete secret ghcr-secret -n acenexus
+
+# 重新建立（PAT 需有 read:packages 權限）
+kubectl create secret docker-registry ghcr-secret \
+  --docker-server=ghcr.io \
+  --docker-username=<GitHub帳號> \
+  --docker-password=<GitHub PAT> \
+  -n acenexus
+
+# 建立後 Pod 會自動重試，觀察狀態
+kubectl get pods -n acenexus -w
+```
+
+> PAT 建立位置：GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)，勾選 `read:packages`。
+
 ### AIClient Web UI（AI 模型與帳號設定）
 
 AIClient Service 為 LoadBalancer，直接從瀏覽器存取：
