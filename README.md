@@ -510,40 +510,6 @@ kubectl get pods -n acenexus -w
 
 ---
 
-#### 情境 B：Docker Desktop registry mirror 攔截（403 來自 `registry-mirror:1273`）
-
-Docker Desktop K8s 內建 registry mirror，會攔截所有 registry pull（包含 GHCR）。
-錯誤訊息包含 `registry-mirror:1273`。
-
-**修法**：在 node 上為 `ghcr.io` 建立直連設定，繞過 mirror：
-
-```bash
-kubectl run -it --rm node-fix --image=busybox --restart=Never \
-  --overrides='{
-    "spec": {
-      "hostPID": true,
-      "hostNetwork": true,
-      "nodeSelector": {"kubernetes.io/hostname": "desktop-control-plane"},
-      "containers": [{
-        "name": "node-fix",
-        "image": "busybox",
-        "command": ["sh", "-c",
-          "mkdir -p /proc/1/root/etc/containerd/certs.d/ghcr.io && cat > /proc/1/root/etc/containerd/certs.d/ghcr.io/hosts.toml << EOF\nserver = \"https://ghcr.io\"\n\n[host.\"https://ghcr.io\"]\n  capabilities = [\"pull\", \"resolve\", \"push\"]\nEOF\necho done"],
-        "securityContext": {"privileged": true}
-      }]
-    }
-  }' -- sh
-```
-
-> **注意**：此設定在 Docker Desktop 重啟後會消失，需重新執行。
-
-套用後刪除失敗的 Pod 讓它重試：
-
-```bash
-kubectl delete pod -n acenexus -l app=<service> --field-selector=status.phase!=Running
-kubectl get pods -n acenexus -w
-```
-
 ### AIClient Web UI（AI 模型與帳號設定）
 
 AIClient Service 為 LoadBalancer，直接從瀏覽器存取：
