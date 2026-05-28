@@ -124,6 +124,47 @@ push to main → test（2–3 min）→ release（3–5 min）→ ArgoCD 輪詢�
 
 ## 首次建置步驟
 
+### Step 0：建立 GitHub PAT
+
+本專案需要兩個獨立 PAT，職責分離：
+
+#### PAT 1：`acenexus-deploy-pat`
+用途：CI push image tag 到 deploy repo + ArgoCD 讀取 deploy repo
+
+```
+GitHub → 右上角頭像 → Settings
+→ 左側最底部 Developer settings
+→ Personal access tokens → Tokens (classic)
+→ Generate new token (classic)
+
+Note：acenexus-deploy-pat
+Expiration：No expiration
+Scopes：✅ repo（只勾這一個）
+```
+
+建立後儲存 token，後續用於：
+- Step 7：各服務 source repo 的 `DEPLOY_REPO_PAT` secret
+- Step 5：ArgoCD repo credential
+
+#### PAT 2：`acenexus-ghcr-pat`
+用途：K8s 從 GHCR 拉取 private image
+
+```
+GitHub → 右上角頭像 → Settings
+→ 左側最底部 Developer settings
+→ Personal access tokens → Tokens (classic)
+→ Generate new token (classic)
+
+Note：acenexus-ghcr-pat
+Expiration：No expiration
+Scopes：✅ read:packages（只勾這一個）
+```
+
+建立後儲存 token，後續用於：
+- Step 2：建立 `ghcr-secret`
+
+---
+
 ### Step 1：建立 K8s namespace
 
 ```bash
