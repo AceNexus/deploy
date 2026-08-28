@@ -1,1 +1,3 @@
 deploy_mysql/mysql_backup/
+deploy_ngrok/.env
+.idea/

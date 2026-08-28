@@ -1,0 +1,33 @@
+# ngrok agent 設定 —— 同一個 agent session 內開多個 tunnel。
+#
+# 為什麼需要這個檔案：docker-compose 的 `command: http <addr>` 一次只能開
+# 一個 tunnel，而 free plan 只允許一個 agent session（開第二個容器會拿到
+# ERR_NGROK_108）。要同時對外開兩個 port，唯一的方式是同一個 agent
+# 讀 config 檔後 `start --all`。
+#
+# authtoken 刻意不寫在這裡，改由容器的 NGROK_AUTHTOKEN 環境變數提供
+# （此檔會進版控，token 不該落在裡面）。
+#
+# addr 用 host.docker.internal：兩個目標都是發布在 Windows 主機上的 port，
+# 不是這個容器所在的 Docker network 內的服務。
+#   :8080 → gatewayservice（K8s LoadBalancer）
+#   :9000 → SubGo web（另一個 compose 專案的 nginx）
+#
+# 作者：MinHao
+# 建立日期：2026-08-24
+# 異動歷史：
+#     2026-08-24 MinHao 初版，新增 subgo tunnel
+
+version: "2"
+
+# 預設只綁 localhost，容器內綁 localhost 等於外面連不進來，
+# 4040 的管理 UI / API 就發布不出去。
+web_addr: 0.0.0.0:4040
+
+tunnels:
+  gateway:
+    proto: http
+    addr: host.docker.internal:8080
+  subgo:
+    proto: http
+    addr: host.docker.internal:9000

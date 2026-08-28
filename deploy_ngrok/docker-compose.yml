@@ -4,9 +4,15 @@ services:
     restart: always
     environment:
       - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    # 兩個 tunnel（gateway :8080、SubGo :9000）定義在 ngrok.yml；
+    # `command: http <addr>` 一次只開一個，所以改走 config 檔 + start --all。
     command:
-      - "http"
-      - "host.docker.internal:8080"
+      - "start"
+      - "--all"
+      - "--config"
+      - "/etc/ngrok/ngrok.yml"
+    volumes:
+      - ./ngrok.yml:/etc/ngrok/ngrok.yml:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

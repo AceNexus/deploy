@@ -20,9 +20,15 @@ k8s/                    # Kubernetes YAML manifests (one subdir per service)
   grafana/              # Grafana PVC + ConfigMap (datasource) + Deployment + Service (LoadBalancer :3000)
   tempo/                # Tempo tracing backend Deployment + Service
 argocd/                 # ArgoCD Application CRDs (one per service) + README
-deploy_ngrok/           # docker-compose.yml + .env.example + update_webhook.ps1
+deploy_ngrok/           # docker-compose.yml + ngrok.yml (tunnel 定義) + .env.example
+                        #   sync_tunnels.ps1   啟動/沿用 tunnel 並同步 nexusbot + LINE webhook
+                        #   status.ps1         唯讀狀態比對
+                        #   notify.ps1         Windows 通知 (toast)
+                        #   get_tunnel_url.ps1 依 upstream port 取 public URL
+                        #   update_webhook.ps1 對 LINE API 寫入 webhook endpoint
 ngrok-tunnel.bat        # (Windows) Start ngrok, update NEXUSBOT_BASE_URL in K8s, update LINE webhooks
 ngrok-tunnel.sh         # (Linux)   同上
+ngrok-status.bat        # (Windows) 唯讀：目前網址 + LINE webhook / nexusbot 是否跟得上
 restart_k8s.bat         # (Windows) Ordered restart: rabbitmq+config → eureka → gateway+nexusbot
 restart_k8s.sh          # (Linux)   同上
 ```
@@ -95,6 +101,40 @@ bash ngrok-tunnel.sh
 # → starts ngrok container, fetches public URL, sets NEXUSBOT_BASE_URL in K8s, updates LINE webhook
 # ERR_NGROK_108 = too many tunnels → visit https://dashboard.ngrok.com/agents to kill old sessions
 ```
+
+**同一個 agent 開兩個 tunnel**（free plan 只允許一個 agent session，開第二個容器會拿到
+ERR_NGROK_108），定義在 `deploy_ngrok/ngrok.yml`，以 `start --all` 啟動：
+
+| tunnel | upstream | 用途 |
+|---|---|---|
+| `gateway` | `host.docker.internal:8080` | gatewayservice —— LINE webhook 走這個 |
+| `subgo` | `host.docker.internal:9000` | SubGo 字幕服務的網頁（`D:\SubGo`，另一個 compose 專案） |
+
+⚠️ **取網址不可用 `tunnels[0]`** —— ngrok API 的回傳順序不保證（實測 subgo 排在 gateway
+前面）。取錯不會報錯，而是把 LINE webhook 指到 SubGo 的網頁上：LINE 收到 200，bot 卻
+永遠沒反應。兩支腳本改為依 upstream port 篩選（`get_tunnel_url.ps1` / jq `endswith`）。
+
+#### 開機自動同步
+
+Startup 資料夾的捷徑帶 `--boot` 參數（最小化執行、跑完不停留），結果以 Windows 通知顯示。
+想隨時查目前狀態就跑 `ngrok-status.bat`（桌面有捷徑「ngrok 狀態」），它只讀不寫。
+
+`--boot` 與手動執行的差別只有兩件事：等 Docker Desktop 與 K8s 就緒（各有逾時），以及
+結束不 pause。**這個等待是必要的** —— Startup 捷徑在登入當下就執行，而 Docker Desktop
+自己也還在啟動，`docker compose` / `kubectl` 一失敗就走進錯誤分支，同步靜靜地沒有發生。
+
+另外兩個刻意的行為：
+
+- **容器已在跑且兩個 tunnel 都在時「沿用」，不 down/up。** compose 設了 `restart: always`，
+  Docker Desktop 一起來就會把容器帶起（並拿到新網址）；再 down/up 等於同一次開機換兩次
+  網址，而且緊接著重連很容易撞上 ERR_NGROK_108。
+- **只在目前值與新網址不同時才寫入。** `kubectl set env` 會觸發 nexusbot 滾動重啟，
+  LINE 那側是對外部 API 的寫入 —— 兩者都不該每次開機都做一次。
+
+⚠️ **`.bat` 一律保持純 ASCII。** cmd 會以 `chcp` 設定的 codepage 逐行重讀 batch 檔，
+UTF-8 中文註解會讓 parser 的位元組位移跑掉，開始執行註解的片段 —— 症狀是
+`'ershell' is not recognized`，而真正那行 `powershell` 從未執行。中文說明放在 `.ps1` 裡
+（PowerShell 解得正確），batch 只留英文。
 
 ### Optional observability stack
 

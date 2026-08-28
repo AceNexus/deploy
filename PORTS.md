@@ -28,5 +28,9 @@
 |                    | 19878 | HTTP  | `start_deploy_aiclient.bat`            | AI Proxy 內部服務 Port               | —                                                              |
 |                    | 19879 | HTTP  | `start_deploy_aiclient.bat`            | AI Proxy 內部服務 Port               | —                                                              |
 |                    | 19880 | HTTP  | `start_deploy_aiclient.bat`            | AI Proxy 內部服務 Port               | —                                                              |
-| **ngrok**          | 4040  | HTTP  | `ngrok-tunnel.bat`                     | ngrok 本地管理 UI / API              | —（Docker，直接開 localhost:4040）                                   |
+| **ngrok**          | 4040  | HTTP  | `ngrok-tunnel.bat`                     | ngrok 本地管理 UI / API（見表格下方說明）              | —（Docker，直接開 localhost:4040）                                   |
 | **ArgoCD**         | 9090  | HTTPS | 安裝於 argocd namespace                   | GitOps CD 平台 UI（帳號：admin）        | `kubectl port-forward svc/argocd-server 9090:443 -n argocd`    |
+
+> **ngrok tunnel**：同一個 agent 同時對外開兩個 tunnel —— `gateway` → `host.docker.internal:8080`
+> （LINE webhook 走這個）與 `subgo` → `host.docker.internal:9000`（SubGo 字幕服務的網頁，`D:\SubGo`，
+> 不屬於本 repo）。定義在 `deploy_ngrok/ngrok.yml`。

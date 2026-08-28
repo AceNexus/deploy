@@ -56,17 +56,25 @@ if docker compose logs ngrok --tail 20 | grep -q "ERR_NGROK_108"; then
 fi
 
 # ── 取得 ngrok 網址 ───────────────────────────────────────────
+# agent 同時開兩個 tunnel（gateway :8080、SubGo :9000），API 回傳順序不保證，
+# 因此依 upstream port 指定 —— 取錯會把 LINE webhook 指到 SubGo 的網頁上。
 get_ngrok_url() {
+    local port="$1"
     curl -s http://localhost:4040/api/tunnels \
-      | jq -r '.tunnels[0].public_url // empty' 2>/dev/null || true
+      | jq -r --arg port ":$port" \
+          'first(.tunnels[] | select(.config.addr | endswith($port)) | .public_url) // empty' \
+          2>/dev/null || true
 }
 
-FINAL_URL=$(get_ngrok_url)
+FINAL_URL=$(get_ngrok_url 8080)
 if [ -z "$FINAL_URL" ]; then
     echo "[資訊] 正在重試..."
     sleep 5
-    FINAL_URL=$(get_ngrok_url)
+    FINAL_URL=$(get_ngrok_url 8080)
 fi
+
+# SubGo 網頁的 tunnel 與 gateway 各自獨立，取不到不算失敗（可能沒啟動 SubGo）
+SUBGO_URL=$(get_ngrok_url 9000)
 
 if [ -z "$FINAL_URL" ]; then
     echo "[錯誤] 無法取得 ngrok 網址，請確認容器是否正常啟動。"
@@ -78,17 +86,22 @@ echo
 echo "========================================"
 echo "  ngrok 啟動成功！"
 echo "========================================"
-echo "  您的網址： $FINAL_URL"
+echo "  gateway (LINE webhook)： $FINAL_URL"
+if [ -n "$SUBGO_URL" ]; then
+    echo "  SubGo 網頁 (:9000)：     $SUBGO_URL"
+else
+    echo "  SubGo 網頁 (:9000)：     (未取得，確認 SubGo 的 web 容器是否啟動)"
+fi
 echo "========================================"
 echo
 
 # 複製到剪貼簿（有 xclip 或 xsel 才執行）
 if command -v xclip &>/dev/null; then
     echo "$FINAL_URL" | xclip -selection clipboard
-    echo "[成功] 網址已複製到剪貼簿。"
+    echo "[成功] gateway 網址已複製到剪貼簿。"
 elif command -v xsel &>/dev/null; then
     echo "$FINAL_URL" | xsel --clipboard --input
-    echo "[成功] 網址已複製到剪貼簿。"
+    echo "[成功] gateway 網址已複製到剪貼簿。"
 fi
 
 # ── 更新 nexusbot NEXUSBOT_BASE_URL（K8s）────────────────────
